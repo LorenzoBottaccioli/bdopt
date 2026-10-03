@@ -11,3 +11,6 @@ bdopt_runs/
 .coverage
 htmlcov/
 .ipynb_checkpoints/
+outputdir/
+bdopt_study/
+out/
