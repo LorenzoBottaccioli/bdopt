@@ -1,6 +1,6 @@
 # Piano – libreria alternativa a BESOS per la Smart Building Educational Platform
 
-Nome di lavoro: **`bdopt`** (Building Design Optimization). Il nome è provvisorio.
+Nome: **`bdopt`** (Building Design Optimization), libero su PyPI. Licenza: **MIT**.
 
 ## 0. Requisiti fissati
 
@@ -9,7 +9,8 @@ Nome di lavoro: **`bdopt`** (Building Design Optimization). Il nome è provvisor
 | Versioni EnergyPlus | **tutte dalla 8.7 in poi** (8.7 → 25.x), con rilevamento automatico della versione |
 | Machine learning | **solo PyTorch** (+ scikit-learn); TensorFlow/Keras vengono eliminati |
 | Packaging | **libreria Python indipendente** (`pip install bdopt`), che gira su Linux/Windows/macOS con un'installazione locale di EnergyPlus. Le immagini Docker sono un artefatto **separato e opzionale** del repo, non una dipendenza |
-| Ottimizzatore | pymoo (variabili miste); adapter Platypus opzionale |
+| Ottimizzatore | **solo pymoo** (variabili miste, NSGA-II/III); Platypus eliminato |
+| Nome / licenza | `bdopt`, **MIT** (come BESOS ed eppy: permissiva, adatta all'uso accademico e didattico) |
 
 ## 1. Perché
 
@@ -52,7 +53,7 @@ Importato ma **non usato**: `NSGAII` di BESOS (i notebook usano Platypus diretta
 - **DataFrame in ingresso e in uscita**, con nomi di colonna = nomi dei parametri e degli obiettivi.
 - **Strato di compatibilità** `bdopt.compat.besos`: i notebook esistenti migrano cambiando solo gli import.
 - **Configurabile da JSON/YAML** (`DesignStudy.from_config`), così il backend genera uno *study config* invece di iniettare codice.
-- Python ≥ 3.10. Core leggero (numpy, pandas, scipy, eppy, pymoo). Gli extra sono opzionali: `bdopt[harlow]`, `bdopt[torch]`, `bdopt[viz]`.
+- Python ≥ 3.10. Core leggero (numpy, pandas, scipy, eppy, pymoo). Platypus non è una dipendenza: `optimize.py` espone un'interfaccia `Optimizer` minima, così un altro backend si può aggiungere in futuro senza toccare il resto. Gli extra sono opzionali: `bdopt[harlow]`, `bdopt[torch]`, `bdopt[viz]`.
 
 ## 3. Architettura
 
@@ -203,8 +204,8 @@ Durata stimata totale: **9–11 settimane** per una persona (il supporto multi-v
 | differenze numeriche vs BESOS | golden test fase 1 |
 | durata della matrice E+ in CI | matrice completa solo notturna, cache degli installer |
 
-## 7. Decisioni ancora aperte
+## 7. Decisioni prese
 
-1. Nome definitivo della libreria e licenza (BESOS è MIT)
-2. Platypus: tenerlo come adapter opzionale o eliminarlo del tutto a favore di pymoo
-3. Downgrade degli IDF (es. un IDF 23.x su un motore 9.6): non supportato, lo proponiamo così
+1. **Nome `bdopt`, licenza MIT.** Il nome è libero su PyPI. MIT è la stessa licenza di BESOS ed eppy, compatibile con EnergyPlus (BSD-3) e semplice per l'uso accademico.
+2. **Solo pymoo, niente Platypus.** pymoo gestisce nativamente le variabili miste (risolve il problema dei categorici di Test 6), offre NSGA-II/NSGA-III ed è manutenuto attivamente. Una dipendenza in meno; se servirà un altro ottimizzatore, si aggiunge dietro l'interfaccia `Optimizer`.
+3. **Downgrade degli IDF** (es. un IDF 23.x su un motore 9.6): non supportato, errore esplicito.
