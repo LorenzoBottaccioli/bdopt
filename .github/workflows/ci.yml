@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"   # nightly: full EnergyPlus version matrix
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install ruff
+      - run: ruff check src tests tools
+
+  unit:
+    name: unit (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - run: pip install -e ".[dev]"
+      # no EnergyPlus here: everything that does not need the engine
+      - run: pytest -m "not eplus and not slow" -q
+
+  eplus:
+    name: EnergyPlus ${{ matrix.eplus }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # pull requests: oldest, the platform's version, newest. Nightly: all (see eplus-full)
+        eplus: ["8.7", "9.6", "25.2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bdopt/eplus
+          key: eplus-${{ matrix.eplus }}
+      - run: pip install -e ".[dev]"
+      - run: python tools/install_eplus.py ${{ matrix.eplus }}
+      # the update tests also need an older and a newer install -> install 9.6 as well
+      - run: python tools/install_eplus.py 9.6
+      - run: BDOPT_TEST_EPLUS_VERSIONS=${{ matrix.eplus }} pytest -m eplus -q -k "not golden"
+
+  eplus-full:
+    if: github.event_name == 'schedule'
+    name: EnergyPlus ${{ matrix.eplus }} (nightly)
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        eplus: ["8.7", "8.9", "9.0", "9.3", "9.6", "22.2", "23.1", "23.2", "24.1", "24.2", "25.1", "25.2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: python tools/install_eplus.py ${{ matrix.eplus }} 9.6
+      - run: BDOPT_TEST_EPLUS_VERSIONS=${{ matrix.eplus }} pytest -m eplus -q

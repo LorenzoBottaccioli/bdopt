@@ -1,0 +1,66 @@
+# bdopt study: adaptive sampling -> surrogate -> multi-objective optimization.
+# Run:  bdopt run examples/study.yaml          (relative paths are relative to this file)
+output_dir: out/office_larnaca
+
+eplus:                       # optional: by default the installed version that matches the IDF is used
+  # version: "9.6"
+  # path: /opt/EnergyPlus-9-6-0
+  # search_paths: [~/.bdopt/eplus]
+  auto_upgrade: false        # true: upgrade the IDF to the newest installed version if none matches
+
+model:
+  idf: models/Office_IDF.idf
+  epw: models/Larnaca_Larnax_Airp_-hour.epw
+
+parameters:
+  - {name: Wall Insulation,   class: Material, object: _InsulationEX_.01,      field: Thickness, min: 0.1, max: 0.5}
+  - {name: Roof Insulation,   class: Material, object: _InsulationEX_Roof_.01, field: Thickness, min: 0.1, max: 0.8}
+  - {name: Ventilation ACH,   class: ZoneVentilation:DesignFlowRate, field: Air Changes per Hour, min: 0, max: 6}
+  - {name: Lights Watts/Area, class: Lights, field: Watts per Zone Floor Area, min: 5, max: 20}
+  # categorical parameter: one value applied to every window (select objects with `where`)
+  # - name: Window type
+  #   class: FenestrationSurface:Detailed
+  #   field: Construction Name
+  #   where: {Surface Type: Window}
+  #   options: [single_glazing, double_glazing, triple_glazing]
+
+objectives:
+  - Electricity:Facility
+  - DistrictHeating:Facility     # also resolves to DistrictHeatingWater on EnergyPlus >= 23.1
+  - DistrictCooling:Facility
+  # - {meter: Electricity:Facility, name: Electricity kWh, unit: kWh, direction: min}
+  # - {variable: Zone Mean Air Temperature, key: "*", aggregate: mean, name: Tmean}
+
+evaluation:
+  processes: 4               # parallel EnergyPlus runs
+  cache: true                # never repeat a finished simulation; an interrupted study resumes
+
+runner:                      # optional: run EnergyPlus through a command prefix (e.g. a container)
+  type: local
+  # type: command
+  # prefix: [docker, exec, energyplus]
+  # executable: /EnergyPlus/energyplus
+  # path_map: {/data/runs: /runs}
+
+sampling:
+  method: adaptive           # or lhs / sobol / random (then use n_samples)
+  adaptive_method: flola_voronoi   # lola_voronoi | voronoi | gp_variance | random
+  engine: native             # or harlow (needs the optional harlow install)
+  n_initial: 20
+  n_test: 5                  # held-out simulations used to measure convergence (0: cross-validation)
+  max_iter: 40
+  batch: 1
+  tol: 0.05                  # stop when the test RMSE (in std units of each objective) is below this
+  seed: 0
+
+surrogate:
+  type: gp                   # gp | mlp | torch_mlp
+  # type: torch_mlp
+  # params: {hidden: [32, 64, 32], n_ensemble: 3}
+
+optimization:
+  algorithm: nsga2           # or nsga3
+  pop_size: 100
+  n_gen: 100
+  verify: 5                  # re-simulate 5 Pareto designs with EnergyPlus and compare with the surrogate
+  normalize: true            # select the design closest to the ideal point after min-max scaling

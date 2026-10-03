@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bdopt"
+version = "0.1.0"
+description = "Building design optimization with EnergyPlus (8.7+): parametric studies, adaptive sampling, surrogate models and multi-objective optimization. A lightweight BESOS alternative."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "bdopt contributors" }]
+keywords = ["energyplus", "building", "optimization", "surrogate", "adaptive sampling", "nsga-ii"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+    "scipy>=1.9",
+    "scikit-learn>=1.2",
+    "pymoo>=0.6.1",
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.0"]
+viz = ["matplotlib>=3.6"]
+yaml = ["pyyaml>=6"]
+harlow = ["harlow"]  # note: harlow itself requires tensorflow; bdopt's native samplers do not
+all = ["bdopt[torch,viz,yaml]"]
+dev = ["pytest>=7", "pytest-cov", "ruff", "bdopt[all]"]
+
+[project.scripts]
+bdopt = "bdopt.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bdopt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "eplus: needs a local EnergyPlus installation (select versions with BDOPT_TEST_EPLUS_VERSIONS)",
+    "slow: long-running test",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

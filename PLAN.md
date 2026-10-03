@@ -1,4 +1,54 @@
-# Piano – libreria alternativa a BESOS per la Smart Building Educational Platform
+# Piano e stato di avanzamento – `bdopt`, alternativa a BESOS
+
+> **Stato (implementato e verificato dove indicato).** Il piano sotto è quello originale; questa sezione dice
+> cosa è stato fatto, cosa è stato fatto in modo diverso e cosa NON è stato verificato.
+
+| Fase | Stato | Note |
+|---|---|---|
+| 0 Setup | fatto | `pyproject.toml`, ruff, pytest, CI GitHub Actions (YAML validato, **non eseguito** su GitHub), `tools/install_eplus.py` (testato su 8.7 `.sh` e 8.8 `.tar.gz`) |
+| 1 Layer EnergyPlus multi-versione | fatto | testato su **8.7, 9.0, 9.6, 23.1, 24.2, 25.2** (Linux). Matrice completa in `tests/test_eplus_versions.py` |
+| 2 Sampling e adaptive | fatto | algoritmi **nativi** (numpy/scipy); ponte harlow opzionale e testato |
+| 3 Surrogati e ottimizzazione | fatto | GP, MLP sklearn, TorchMLP; NSGA-II/III (pymoo) con variabili miste |
+| 4 Piattaforma | fatto, in parte non verificabile | notebook migrati ed eseguiti con EnergyPlus 9.6; Dockerfile/compose **non costruiti** (nessun daemon Docker qui) |
+| 5 Rilascio | parziale | README e docs scritti; **nessuna pubblicazione su PyPI**; il pacchetto si installa da git |
+
+## Differenze rispetto al piano
+
+* **harlow non è il motore di default.** `harlow 0.1.0` importa TensorFlow/TensorFlow-Probability a livello di
+  modulo, in contrasto con la scelta "solo PyTorch", e oggi un `pip install harlow` produce un import rotto
+  (serve `tf_keras`, non dichiarato). Gli algoritmi sono quindi riscritti in `bdopt.adaptive` (FLOLA/LOLA-Voronoi,
+  Voronoi, varianza GP); `HarlowAdaptiveSampler` è un ponte opzionale che esegue harlow vero.
+* **Lo schema SQL è uguale in tutte le versioni 8.7–25.2** (verificato): non servono rami per versione, a differenza
+  di quanto ipotizzato nel piano. Cambiano invece nomi di campi/classi/meter (tabella `aliases.py`, ricavata dal
+  confronto reale degli IDD).
+* **Parser IDF/IDD propri invece di eppy**: niente IDD globale per processo, quindi nessun conflitto tra versioni.
+* **`PyEnergyPlusRunner` non implementato** (opzionale nel piano, nessun vantaggio rispetto al subprocess).
+  `CommandRunner` (prefisso di comando, es. `docker exec`) sì.
+* **pymoo con variabili codificate nel cubo unitario e "snap"** dei discreti, invece di `MixedVariableGA`.
+* **`study.json` iniettato dal backend: non fatto.** `inject_data.py` continua a inserire una cella di codice (ora con
+  `load_idf`), modifica minima; `DesignStudy.from_config` è disponibile se il backend vorrà passare a una configurazione.
+* **Immagine Docker dedicata al surrogate** (`conda-environment/surrogate`, Python 3.11) invece di modificare l'ambiente
+  condiviso a Python 3.9, perché `bdopt` richiede Python >= 3.10 e non potevo costruire/testare l'immagine condivisa.
+* Il GP ha richiesto un fix di robustezza (vedi `docs/ADAPTIVE.md`): senza, alcuni disegni LHS davano
+  errori ~1.0 per un ottimo locale della verosimiglianza.
+
+## Risultati misurati
+
+* Uguale a BESOS 2.2.3 su 4 punti reali (Office, EnergyPlus 9.6): differenza relativa massima 4e-13.
+  Tempo in quella misura: bdopt 33 s, BESOS 15 min 25 s (singola misura, causa non indagata).
+* Adaptive vs LHS a parità di punti di training: −37% di errore su una risposta con caratteristica **localizzata**,
+  nessun vantaggio su risposta liscia o su soglia obliqua (tabella in `README.md`).
+* Aggiornamento automatico 9.6 → 25.2 del modello Office: ~230 s una tantum; risultati diversi di −2.3% / +4.9% / −5.8%
+  rispetto a 9.6 (causa non isolata).
+
+## Non verificato
+
+CI su GitHub, esecuzione su Windows/macOS, build delle immagini Docker, pubblicazione su PyPI, modifica del frontend
+(il bundle `frontend/dist` non cita BESOS, ma non è stato rigenerato né provato).
+
+---
+
+# Piano originale
 
 Nome: **`bdopt`** (Building Design Optimization), libero su PyPI. Licenza: **MIT**.
 
