@@ -84,3 +84,11 @@ def test_selector_resolution_with_aliases():
         FieldSelector("Lights", "*", "Lightning Level").apply(idf, 1, idd)
     with pytest.raises(ParameterError, match="matches no object"):
         FieldSelector("Lights", "nope", "Lighting Level").validate(idf, idd)
+
+
+def test_function_evaluator_keeps_the_index():
+    pr, ev = analytic_problem(2)
+    df = pr.decode(np.random.default_rng(0).random((3, 2)))
+    df.index = [7, 8, 9]
+    assert list(ev.evaluate(df).index) == [7, 8, 9]
+    assert list(ev.evaluate(df, keep_input=True).index) == [7, 8, 9]

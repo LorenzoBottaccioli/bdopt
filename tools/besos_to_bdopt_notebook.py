@@ -144,9 +144,8 @@ viz.pareto(front, background=result.data, highlight=best)
 viz.parallel_coordinates(front.df, problem)
 
 # Check the selected design with the real simulator.
-check = evaluator.evaluate(best[problem.parameter_names].to_frame().T)
-pred = surrogate.predict(best[problem.parameter_names].to_frame().T)
-pd.concat([check.T.rename(columns={0: "EnergyPlus"}), pred.T.rename(columns={0: "surrogate"})], axis=1)'''
+x = best[problem.parameter_names].to_frame().T.reset_index(drop=True)
+pd.DataFrame({"EnergyPlus": evaluator.evaluate(x).iloc[0], "surrogate": surrogate.predict(x).iloc[0]})'''
 
 
 def build(src: Path, dst: Path, models_dir: str, n_initial: int, n_test: int, max_iter: int, processes: int) -> None:

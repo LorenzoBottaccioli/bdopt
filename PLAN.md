@@ -9,7 +9,7 @@
 | 1 Layer EnergyPlus multi-versione | fatto | testato su **8.7, 9.0, 9.6, 23.1, 24.2, 25.2** (Linux). Matrice completa in `tests/test_eplus_versions.py` |
 | 2 Sampling e adaptive | fatto | algoritmi **nativi** (numpy/scipy); ponte harlow opzionale e testato |
 | 3 Surrogati e ottimizzazione | fatto | GP, MLP sklearn, TorchMLP; NSGA-II/III (pymoo) con variabili miste |
-| 4 Piattaforma | fatto, in parte non verificabile | notebook migrati ed eseguiti con EnergyPlus 9.6; Dockerfile/compose **non costruiti** (nessun daemon Docker qui) |
+| 4 Piattaforma | fatto, **non pubblicato** | notebook migrati ed eseguiti con EnergyPlus 9.6; Dockerfile/compose **non costruiti** (nessun daemon Docker qui). Il push su `andresorehida1/Smart_Builing_Educational_Platform_Dockers` è stato rifiutato (403: app GitHub non installata): le modifiche sono in `platform-migration/` come patch (`git am --keep-cr`) |
 | 5 Rilascio | parziale | README e docs scritti; **nessuna pubblicazione su PyPI**; il pacchetto si installa da git |
 
 ## Differenze rispetto al piano

@@ -287,7 +287,6 @@ class EnergyPlusEvaluator(Evaluator):
         if keep_dirs is not None:
             self.keep_dirs = keep_dirs
         names = self.problem.objective_names
-        df = df.reset_index(drop=True) if not isinstance(df.index, pd.RangeIndex) else df
         rows = df[self.problem.parameter_names].to_dict("records")
         texts = [self._row_model(r) for r in rows]
         keys = [

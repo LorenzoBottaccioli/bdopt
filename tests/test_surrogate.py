@@ -81,3 +81,11 @@ def test_metrics_definitions():
     assert m.loc["a", "rmse_pct"] == pytest.approx(0.5 / 2.5 * 100)
     assert m.loc["a", "nrmse"] == pytest.approx(0.5 / 3)
     assert m.loc["a", "r2"] == pytest.approx(1 - 1.0 / 5.0)
+
+
+def test_predict_keeps_the_index(data):
+    pr, train, test = data
+    t = test.head(3).copy()
+    t.index = [10, 20, 30]
+    m = GPSurrogate(n_restarts=1).fit(train, pr)
+    assert list(m.predict(t).index) == [10, 20, 30]

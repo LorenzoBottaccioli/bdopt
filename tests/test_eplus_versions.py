@@ -58,9 +58,10 @@ def test_engine_autodetected_from_model_version(eplus, tmp_path, monkeypatch):
 
 def test_cache_avoids_resimulation(eplus, tmp_path):
     pr, idf, epw = _five_zone(eplus, ("Electricity:Facility",))
-    df = pd.DataFrame({"lights": [1000.0, 2000.0, 1000.0]})  # duplicate row simulated once
+    df = pd.DataFrame({"lights": [1000.0, 2000.0, 1000.0]}, index=[5, 6, 7])  # duplicate row simulated once
     ev = EnergyPlusEvaluator(pr, idf, epw, eplus=eplus, out_dir=tmp_path)
     a = ev.evaluate(df)
+    assert list(a.index) == [5, 6, 7]  # the caller's index is kept
     assert ev.n_simulations == 2 and a.iloc[0, 0] == a.iloc[2, 0]
     ev2 = EnergyPlusEvaluator(pr, idf, epw, eplus=eplus, out_dir=tmp_path)  # new object, same cache dir
     b = ev2.evaluate(df)
