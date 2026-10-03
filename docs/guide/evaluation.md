@@ -30,7 +30,8 @@ results and deletes the run directory.
 | `keep_dirs` | keep every run directory, not only failed ones | `False` |
 | `timeout` | seconds per run | none |
 | `design_day` | run the design days only (`-D`) | `False` |
-| `on_error` | `"nan"` or `"raise"` | `"nan"` |
+| `on_error` | what to do with a run that fails: `"nan"` or `"raise"` | `"nan"` |
+| `on_severe` | what to do with a run that *finishes* but reports severe errors: `"warn"`, `"nan"` (treat it as failed) or `"ignore"` | `"warn"` |
 | `runner` | a custom {class}`~bdopt.simulation.Runner`, see below | local |
 | `progress` | progress bar (needs `tqdm`) | `False` |
 
@@ -51,6 +52,32 @@ the weather file's content, the EnergyPlus version and the requested outputs. Co
 evaluator.stats()
 # {'simulations': 4, 'cache_hits': 0, 'failed': 0, 'simulation_seconds': 121.87, 'eplus_version': '9.6.0'}
 ```
+
+## EnergyPlus messages
+
+EnergyPlus writes warnings and errors to `eplusout.err`. bdopt reads the final summary of every run and keeps the
+counts in the run record, so a model that finishes with problems is not silent:
+
+```python
+evaluator.stats()
+# {'simulations': 32, 'cache_hits': 0, 'failed': 0, 'simulation_seconds': 978.32, 'eplus_version': '9.6.0',
+#  'energyplus_warnings': 1152, 'energyplus_severe': 2}      # tutorial 2: 32 runs, one with 2 severe errors
+evaluator.history[-1].eplus_warnings      # warnings of the last run
+evaluator.history[-1].parameters          # the design that was simulated
+```
+
+* a run that finishes **with severe errors** (for example a zone whose warm-up did not converge) is handled by
+  `on_severe`: `"warn"` (default) keeps the result and raises a `UserWarning` quoting the first severe messages;
+  `"nan"` treats the design as failed (NaN, run directory kept in `failed/`, never cached, so adaptive sampling skips
+  it and does not propose it again); `"ignore"` is silent. The policy also applies to results taken from the cache,
+  which remember how many severe errors their run had;
+* ordinary warnings are only counted (most models have a few dozen, e.g. unused constructions or monthly tables
+  that name meters the model does not have): to read them keep the run directory (`keep_dirs=True`) and open its
+  `eplusout.err`;
+* **bdopt itself adds none**: the objects it appends (`Output:SQLite`, the meters and variables you ask for) are
+  chosen so that EnergyPlus has nothing to say about them. A test compares, on every installed EnergyPlus
+  version, the warnings of a model run directly and through the evaluator, and they are identical. For example the
+  office model of the tutorials gives 36 warnings and no severe error, with or without bdopt.
 
 ## Failures
 

@@ -26,7 +26,7 @@ parameters:
 
 objectives:
   - Electricity:Facility
-  - DistrictHeating:Facility     # also resolves to DistrictHeatingWater on EnergyPlus >= 23.1
+  - DistrictHeating:Facility     # resolved to DistrictHeatingWater on EnergyPlus >= 23.2
   - DistrictCooling:Facility
   # - {meter: Electricity:Facility, name: Electricity kWh, unit: kWh, direction: min}
   # - {variable: Zone Mean Air Temperature, key: "*", aggregate: mean, name: Tmean}

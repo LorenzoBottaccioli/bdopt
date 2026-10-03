@@ -154,7 +154,7 @@ are in `examples/models/` of the repository.
 You need an EnergyPlus **9.6** installation to run it yourself (`python tools/install_eplus.py 9.6`), or
 `eplus=...` pointing at any version together with `auto_upgrade=True`.
 :::'''),
-    code(SETUP + '''
+    code(SETUP.replace('warnings.filterwarnings("ignore")', 'warnings.filterwarnings("ignore", module="sklearn")  # bdopt\'s own warnings stay visible') + '''
 from pathlib import Path
 
 from bdopt import (CategoryParameter, EnergyPlusEvaluator, FieldSelector, Parameter, Problem,
@@ -201,6 +201,19 @@ sampler = AdaptiveSampler(problem, evaluator, method="flola_voronoi", seed=0)
 result = sampler.run(n_initial=12, n_test=4, max_iter=8, batch=2, tol=0.0)
 print(result)
 print(evaluator.stats())'''),
+    code('''# runs that EnergyPlus finished with severe errors (bdopt also raised a Python warning for each, above)
+flagged = [r for r in evaluator.history if r.eplus_severe]
+for r in flagged:
+    print({name: round(float(value), 3) for name, value in r.parameters.items()})
+    print("  ", r.warnings[0][:260])
+print(len(flagged), "of", len(evaluator.history), "runs flagged")'''),
+    md('''`stats()` also counts the messages EnergyPlus wrote to `eplusout.err` in every run
+(`energyplus_warnings`, `energyplus_severe`). The warnings come from the model itself (an office model of this size
+has a few dozen: unused constructions, monthly reports naming meters the model does not use ...); bdopt adds none.
+A run that ends with **severe** errors is different: the cell above lists them. The result is kept by default
+(`on_severe="warn"`); `on_severe="nan"` would treat such a design as failed, so adaptive sampling would skip it and
+never propose it again. EnergyPlus' message here is about the warm-up of two zones (see the troubleshooting page).
+See {doc}`../guide/evaluation`.'''),
     code('''result.history[["iteration", "n_train", "n_evaluations", "scaled_rmse", "elapsed_s"]]'''),
     md('''`scaled_rmse` is the error on the 4 held-out simulations, in units of the standard deviation of each
 objective. It need not fall monotonically: with so few points a new simulation can temporarily make the model

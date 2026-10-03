@@ -7,6 +7,7 @@ Run with e.g. ``BDOPT_EPLUS_PATH=/opt/eplus pytest -m eplus`` (all installed ver
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,7 +26,7 @@ from bdopt import (
     VersionMismatch,
 )
 from bdopt.eplus import TransitionError
-from bdopt.simulation import CommandRunner
+from bdopt.simulation import CommandRunner, LocalRunner
 from conftest import DATA, MODELS, installs
 
 pytestmark = pytest.mark.eplus
@@ -48,6 +49,35 @@ def test_same_study_runs_on_every_version(eplus, tmp_path):
     assert np.isfinite(out.to_numpy()).all() and (out.to_numpy() > 0).all()
     assert out.loc[1, "Electricity:Facility"] > out.loc[0, "Electricity:Facility"]
     assert out.loc[1, "DistrictHeating:Facility"] < out.loc[0, "DistrictHeating:Facility"]
+
+
+def _invalid_meter_warnings(run_dir) -> list[str]:
+    err = (Path(run_dir) / "eplusout.err").read_text(errors="replace")
+    return sorted(line.strip() for line in err.splitlines() if "Output:Meter: invalid Key Name" in line)
+
+
+def test_bdopt_adds_no_energyplus_warnings(eplus, tmp_path):
+    """EnergyPlus must have nothing to say about what bdopt adds. The same design run directly and through the
+    evaluator gives the same warnings (same count, same invalid-meter messages) and no severe error. A meter
+    that does not exist in a version makes EnergyPlus warn, so the requests are chosen per version."""
+    from bdopt import IDF
+    from bdopt.simulation import LocalRunner
+
+    pr, idf_path, epw = _five_zone(eplus)
+    direct = IDF.from_file(idf_path)
+    pr.apply(direct, {"lights": 1000.0}, eplus.idd)
+    direct.add("Output:SQLite", "SimpleAndTabular")  # the runner needs the SQL file; bdopt adds the same
+    baseline = LocalRunner(eplus).run(direct.to_text(), epw, tmp_path / "direct")
+    assert baseline.ok
+
+    ev = EnergyPlusEvaluator(pr, idf_path, epw, eplus=eplus, out_dir=tmp_path / "bdopt", keep_dirs=True)
+    ev.evaluate(pd.DataFrame({"lights": [1000.0]}))
+    rec = ev.history[-1]
+    assert _invalid_meter_warnings(rec.run_dir) == _invalid_meter_warnings(tmp_path / "direct")
+    assert rec.eplus_warnings == baseline.warnings, (rec.eplus_warnings, baseline.warnings)
+    assert rec.eplus_severe == 0 and baseline.severe == 0
+    stats = ev.stats()
+    assert stats["energyplus_severe"] == 0 and stats["energyplus_warnings"] == baseline.warnings
 
 
 def test_engine_autodetected_from_model_version(eplus, tmp_path, monkeypatch):
@@ -194,3 +224,81 @@ def test_reproduces_stored_reference_results(tmp_path):
     out = ev.evaluate(rows[pr.parameter_names])
     rel = np.abs(out[objs].to_numpy() - ref[objs].to_numpy()) / np.abs(ref[objs].to_numpy())
     assert rel.max() < 1e-9, rel.max()
+
+
+class _SevereRunner(LocalRunner):
+    """A real EnergyPlus run whose outcome is reported with severe errors (to test the policies)."""
+
+    def run(self, *a, **k):
+        out = super().run(*a, **k)
+        out.severe = 2
+        out.severe_messages = ["** Severe  ** CheckWarmupConvergence: Zone=X did not converge after 25 warmup days.",
+                               "** Severe  ** second one"]
+        return out
+
+
+@pytest.mark.parametrize("policy", ["warn", "nan", "ignore"])
+def test_severe_errors_policy(eplus, tmp_path, policy):
+    """A run that finishes with severe errors: ``warn`` keeps the value and warns, ``nan`` treats it as failed,
+    ``ignore`` is silent. The same applies when the result later comes from the cache."""
+    pr, idf, epw = _five_zone(eplus, ("Electricity:Facility",))
+    ev = EnergyPlusEvaluator(pr, idf, epw, runner=_SevereRunner(eplus), out_dir=tmp_path, on_severe=policy)
+    df = pd.DataFrame({"lights": [1000.0]})
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        out = ev.evaluate(df)
+    texts = " ".join(str(x.message) for x in w)
+    assert ev.stats()["energyplus_severe"] == 2
+    if policy == "nan":
+        assert np.isnan(out.iloc[0, 0]) and "severe" in texts and any((tmp_path / "failed").iterdir())
+    else:
+        assert np.isfinite(out.iloc[0, 0])
+        assert ("severe" in texts) == (policy == "warn")
+    # second call: from the cache; the policy still applies
+    with warnings.catch_warnings(record=True) as w2:
+        warnings.simplefilter("always")
+        again = ev.evaluate(df)
+    texts2 = " ".join(str(x.message) for x in w2)
+    if policy == "nan":
+        assert np.isnan(again.iloc[0, 0])  # failed runs are not cached: simulated (and rejected) again
+    else:
+        assert ev.n_cache_hits == 1 and again.iloc[0, 0] == out.iloc[0, 0]
+        assert ("severe" in texts2) == (policy == "warn")
+    assert ev.history[-1].parameters == {"lights": 1000.0}
+
+
+def test_on_severe_must_be_valid(tmp_path):
+    from bdopt import EnergyPlusEvaluator as E
+    from conftest import analytic_problem
+
+    pr, _ = analytic_problem(2)
+    with pytest.raises(ValueError, match="on_severe"):
+        E(pr, "x.idf", None, on_severe="maybe")
+
+
+@pytest.mark.slow
+def test_real_case_warmup_convergence_severe_error(tmp_path):
+    """One design of the office model (EnergyPlus 9.6) finishes with two *severe* errors, ``CheckWarmupConvergence:
+    Loads Initialization ... did not converge``. It was found in the tutorial study; raising the maximum number of
+    warm-up days (25, 60, 200) does not remove it and does not change the objectives, so bdopt reports it instead of
+    hiding it and lets the user choose what to do with such designs (``on_severe``)."""
+    ep = next((e for e in installs() if e.version.matches("9.6")), None)
+    if ep is None:
+        pytest.skip("EnergyPlus 9.6 not installed")
+    P = [
+        Parameter(FieldSelector("Material", "_InsulationEX_.01", "Thickness"), RangeParameter(0.1, 0.5), name="wall"),
+        Parameter(FieldSelector("Material", "_InsulationEX_Roof_.01", "Thickness"), RangeParameter(0.1, 0.8), name="roof"),
+        Parameter(FieldSelector("Lights", "*", "Watts per Zone Floor Area"), RangeParameter(5, 20), name="lights"),
+        Parameter(FieldSelector("ZoneVentilation:DesignFlowRate", "*", "Air Changes per Hour"), RangeParameter(0, 6), name="ach"),
+    ]
+    pr = Problem(P, ["Electricity:Facility"])
+    design = pd.DataFrame({"wall": [0.1159], "roof": [0.4066], "lights": [18.0846], "ach": [3.8009]})
+    kwargs = dict(eplus=ep, out_dir=tmp_path)
+    with pytest.warns(UserWarning, match="did not converge after 25 warmup days"):
+        ev = EnergyPlusEvaluator(pr, MODELS / "Office_IDF.idf", MODELS / "Larnaca_Larnax_Airp_-hour.epw", **kwargs)
+        value = ev.evaluate(design).iloc[0, 0]
+    assert np.isfinite(value) and ev.history[-1].eplus_severe == 2
+    strict = EnergyPlusEvaluator(pr, MODELS / "Office_IDF.idf", MODELS / "Larnaca_Larnax_Airp_-hour.epw",
+                                 eplus=ep, out_dir=tmp_path / "strict", on_severe="nan")
+    with pytest.warns(UserWarning, match="failed"):
+        assert np.isnan(strict.evaluate(design).iloc[0, 0])

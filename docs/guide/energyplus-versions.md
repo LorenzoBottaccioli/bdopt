@@ -5,15 +5,15 @@ bdopt works with every EnergyPlus release from 8.7. Everything that depends on t
 
 | Aspect | How it is handled | Checked on |
 |---|---|---|
-| Finding the engine | `EnergyPlus.find(version=...)`, environment variables, `PATH`, standard folders; version read from the `!IDD_Version` line of `Energy+.idd` | 8.7, 9.0.1, 9.6, 23.1, 24.2, 25.2 |
-| Command line | `energyplus -w EPW -d OUTDIR [-x] [-D] IDF`, identical in all versions; `-x` (ExpandObjects) is added when the model has `HVACTemplate:` objects | all six |
-| Results | `eplusout.sql`: `ReportDataDictionary` / `ReportData` have the same layout from 8.7 to 25.2, so one reader serves all | all six |
+| Finding the engine | `EnergyPlus.find(version=...)`, environment variables, `PATH`, standard folders; version read from the `!IDD_Version` line of `Energy+.idd` | 8.7, 9.0.1, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2, 25.2 |
+| Command line | `energyplus -w EPW -d OUTDIR [-x] [-D] IDF`, identical in all versions; `-x` (ExpandObjects) is added when the model has `HVACTemplate:` objects | all ten |
+| Results | `eplusout.sql`: `ReportDataDictionary` / `ReportData` have the same layout from 8.7 to 25.2, so one reader serves all | all ten |
 | Field/class names | resolved through the IDD of the version in use; renames are aliased (`bdopt/eplus/aliases.py`) | see below |
-| Meter names | `DistrictHeating:Facility` is requested as `DistrictHeating`, `DistrictHeatingWater` and `DistrictHeatingSteam`; the values reported are summed | 25.2 reports `DistrictHeatingWater` |
+| Meter names | `DistrictHeating:Facility` is `DistrictHeatingWater:Facility` (and `...Steam`) from **23.2**, `DistrictHeating:Facility` up to 23.1. bdopt requests only the names valid for the version, because EnergyPlus warns about a meter that does not exist; the steam meter only if the model has a `DistrictHeating:Steam` plant | measured on all ten |
 | Model older than the engine | `auto_upgrade=True` runs the `IDFVersionUpdater` transitions shipped with EnergyPlus, chained across installations (the 9.6 install covers 7.2 -> 9.6, the 25.2 install 9.0 -> 25.2); result cached | 8.7 -> 9.6 ... 25.2, 9.6 -> 25.2 |
 | Model newer than the engine | refused (`TransitionError`) | |
 
-Renames found by diffing the IDDs of 8.7, 9.0, 9.6, 23.1, 24.2 and 25.2 (`tools/idd_diff.py`):
+Renames found by diffing the IDDs of 8.7, 9.0, 9.6, 23.1, 24.2 and 25.2 (`tools/idd_diff.py`), plus the district heating meters, found by running a model on every version:
 
 * `Lights` / `*Equipment`: `Watts per Zone Floor Area` -> `Watts per Floor Area` (24.2)
 * `ZoneInfiltration:DesignFlowRate`: `Flow per Zone Floor Area` -> `Flow Rate per Floor Area`,
@@ -22,6 +22,7 @@ Renames found by diffing the IDDs of 8.7, 9.0, 9.6, 23.1, 24.2 and 25.2 (`tools/
 * zone-name fields: `Zone or ZoneList Name` -> `Zone or ZoneList or Space or SpaceList Name` (9.6 / 23.1)
 * `Output:Meter`: `Name` -> `Key Name` (9.0)
 * class `WindowProperty:ShadingControl` -> `WindowShadingControl` (9.0)
+* meters `DistrictHeating:*` -> `DistrictHeatingWater:*` / `DistrictHeatingSteam:*` (23.2; the IDD classes `DistrictHeating:Water` and `:Steam` appear in the same release)
 
 Fields that were only added or removed need no alias, because fields are addressed by name, never by
 position. When a new EnergyPlus version appears, run `tools/idd_diff.py` between it and the previous one and add

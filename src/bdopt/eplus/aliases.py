@@ -16,6 +16,7 @@ import difflib
 import re
 
 from .idd import IDD, norm
+from .version import Version
 
 #: Groups of equivalent field names. ``classes=None`` means every class.
 #: ``(classes, names)`` -- any member of ``names`` is accepted for any other member.
@@ -95,15 +96,33 @@ def resolve_field(idd: IDD, class_name: str, field_name: str) -> tuple[str, int]
 # -- meters --------------------------------------------------------------------------------------
 _DISTRICT = re.compile(r"(?<![A-Za-z])District(Heating|Cooling)(Water|Steam)?(?![A-Za-z])")
 
+#: First EnergyPlus version in which ``DistrictHeating`` is split into ``DistrictHeatingWater`` and
+#: ``DistrictHeatingSteam`` (IDD classes ``DistrictHeating:Water`` / ``:Steam``). Measured by running a model
+#: with district heating on 8.7, 9.0, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2 and 25.2: up to 23.1 only
+#: ``DistrictHeating:Facility`` exists, from 23.2 only ``DistrictHeatingWater:Facility`` (and ``...Steam``).
+DISTRICT_HEATING_SPLIT = Version(23, 2, 0)
 
-def meter_candidates(name: str) -> list[str]:
-    """Meter names to request/read for ``name`` across versions.
 
-    ``DistrictHeating:Facility`` became ``DistrictHeatingWater:Facility`` (and ``...Steam``) in
-    newer versions; the result for the requested name is the sum of all candidates reported.
+def meter_candidates(name: str, version: Version | None = None, has_steam: bool = True) -> list[str]:
+    """Meter names to request for ``name`` on a given EnergyPlus version.
+
+    ``DistrictHeating:Facility`` is ``DistrictHeatingWater:Facility`` (and ``...Steam``) from 23.2. Asking
+    EnergyPlus for a meter that does not exist makes it print a warning, so with a known ``version`` only the
+    names valid there are returned (the steam meter only if ``has_steam``, i.e. the model has a steam district
+    heating plant). With ``version=None`` every variant is returned, which is what is needed to *read* results.
     """
     m = _DISTRICT.search(name)
     if not m or m.group(1) != "Heating":
         return [name]
-    pre, post = name[: m.start()], name[m.end() :]
-    return [f"{pre}DistrictHeating{s}{post}" for s in ("", "Water", "Steam")]
+    pre, post, kind = name[: m.start()], name[m.end() :], m.group(2)
+    variants = {"": f"{pre}DistrictHeating{post}", "Water": f"{pre}DistrictHeatingWater{post}",
+                "Steam": f"{pre}DistrictHeatingSteam{post}"}
+    if version is None:
+        return list(variants.values())
+    if version < DISTRICT_HEATING_SPLIT:
+        return [variants[""]]
+    if kind == "Steam":
+        return [variants["Steam"]]
+    if kind == "Water":
+        return [variants["Water"]]
+    return [variants["Water"], *([variants["Steam"]] if has_steam else [])]

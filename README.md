@@ -6,7 +6,7 @@ Built for the Smart Building Educational Platform, with adaptive sampling as a f
 
 * **Independent library.** `pip install` + any EnergyPlus install, on any OS. No Docker, no fixed paths
   (a Dockerfile is provided as a convenience, nothing depends on it).
-* **Every EnergyPlus version from 8.7** (tested on 8.7, 9.0, 9.6, 23.1, 24.2, 25.2): the installation matching
+* **Every EnergyPlus version from 8.7** (tested on 8.7, 9.0, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2, 25.2): the installation matching
   the model is found automatically; names that changed between versions are aliased; older models can be
   upgraded with EnergyPlus' own transition tools.
 * **Adaptive sampling without TensorFlow.** `harlow` imports TensorFlow at module level; bdopt implements the
@@ -59,7 +59,7 @@ EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH
 |---|---|
 | `bdopt.Problem`, `Parameter`, `FieldSelector`, `RangeParameter`, `IntegerParameter`, `CategoryParameter`, `GenericSelector` | the design space; everything numeric happens in the unit cube, so bounds, order and scaling are never typed by hand |
 | `MeterReader`, `VariableReader`, `FunctionReader` | objectives (units, aggregation, direction min/max, custom post-processing of `eplusout.sql`) |
-| `EnergyPlusEvaluator` | parallel runs, on-disk cache (resume after a crash for free), failure handling (NaN + kept run directory), `auto_upgrade` |
+| `EnergyPlusEvaluator` | parallel runs, on-disk cache (resume after a crash for free), failure handling (NaN + kept run directory), EnergyPlus warning/severe-error counts and an `on_severe` policy, `auto_upgrade` |
 | `bdopt.sampling` | `lhs`, `sobol`, `random`, `factorial` with constraints |
 | `bdopt.adaptive.AdaptiveSampler` | `flola_voronoi` (default), `lola_voronoi`, `voronoi`, `gp_variance`, `random`; stops on test error, iterations or simulation budget |
 | `bdopt.adaptive.HarlowAdaptiveSampler` | optional bridge to harlow's samplers (needs harlow + TensorFlow) |
@@ -91,7 +91,7 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
   (`tests/test_eplus_versions.py::test_reproduces_stored_reference_results`). A study that is interrupted and
   re-run takes its finished simulations from the cache (4 cached results: 0.4 s instead of 33 s).
 * **One study, six EnergyPlus versions.** The same code (class, field and meter names written once) runs on
-  8.7, 9.0, 9.6, 23.1, 24.2 and 25.2, including `HVACTemplate` models (`-x` expansion), and the cache,
+  8.7, 9.0, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2 and 25.2, including `HVACTemplate` models (`-x` expansion), and the cache,
   failure-handling and selector-error tests pass on each.
 * **Adaptive vs plain Latin hypercube, same number of training points** (50, Gaussian-process surrogate,
   4 random seeds, normalised RMSE on 3000 independent points; analytic functions, 3 parameters):

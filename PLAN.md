@@ -8,7 +8,7 @@ multi-obiettivo. Nome `bdopt`, licenza MIT.
 
 | Tema | Scelta |
 |---|---|
-| Versioni EnergyPlus | tutte dalla 8.7 (testate 8.7, 9.0, 9.6, 23.1, 24.2, 25.2) |
+| Versioni EnergyPlus | tutte dalla 8.7 (testate 8.7, 9.0, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2, 25.2) |
 | Machine learning | scikit-learn + PyTorch; nessun TensorFlow/Keras |
 | Ottimizzazione | solo pymoo (NSGA-II / NSGA-III), variabili miste |
 | Docker | non è una dipendenza; `docker/Dockerfile` è facoltativo |

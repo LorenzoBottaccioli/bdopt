@@ -203,7 +203,7 @@ class DesignStudy:
                 cache=ev.get("cache", True), keep_dirs=ev.get("keep_dirs", False),
                 timeout=ev.get("timeout"), runner=runner, auto_upgrade=e.get("auto_upgrade", False),
                 design_day=ev.get("design_day", False), progress=ev.get("progress", False),
-                on_error=ev.get("on_error", "nan"),
+                on_error=ev.get("on_error", "nan"), on_severe=ev.get("on_severe", "warn"),
                 search_paths=[self._path(p) for p in e.get("search_paths", [])] or None,
             )
         return self._evaluator

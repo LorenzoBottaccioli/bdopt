@@ -32,6 +32,7 @@ class RunOutcome:
     errors: list[str] = field(default_factory=list)
     warnings: int = 0
     severe: int = 0
+    severe_messages: list[str] = field(default_factory=list)
 
     @property
     def sql_path(self) -> Path:
@@ -48,8 +49,9 @@ def parse_err_file(path: Path) -> tuple[list[str], int, int, bool]:
         return [], 0, 0, False
     text = path.read_text(errors="replace")
     msgs = [ln.strip() for ln in text.splitlines() if "** Fatal" in ln or "** Severe" in ln]
-    m = _COUNTS.search(text)
-    warn, sev = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+    # the file has several summaries (warm-up, sizing, final): the last one counts the whole run
+    found = _COUNTS.findall(text)
+    warn, sev = (int(found[-1][0]), int(found[-1][1])) if found else (0, 0)
     return msgs, warn, sev, "EnergyPlus Completed Successfully" in text
 
 
@@ -124,7 +126,7 @@ class Runner:
                 errors.append("EnergyPlus did not complete successfully")
             if rc == 0 and completed and not (run_dir / "eplusout.sql").is_file():
                 errors.append("no eplusout.sql produced")
-        return RunOutcome(ok, run_dir, rc, elapsed, errors, warn, sev)
+        return RunOutcome(ok, run_dir, rc, elapsed, errors, warn, sev, msgs[-5:])
 
 
 class LocalRunner(Runner):

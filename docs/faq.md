@@ -56,6 +56,31 @@ EnergyPlus only creates a meter if something uses that resource. If the model ha
 answer; if you expected a value, check the spelling. Set `missing="error"` on the {class}`~bdopt.MeterReader` to
 turn this into an exception.
 
+## EnergyPlus says my model has warnings
+
+Most models do. `evaluator.stats()` reports `energyplus_warnings` and `energyplus_severe`; the warnings come from
+the model (unused constructions, floor areas that differ from the geometry, monthly reports that name meters the
+model does not use ...) and are the same you would get running EnergyPlus by hand. bdopt adds none of its own,
+and warns you (in Python) only when a run ends with *severe* errors. Run with `keep_dirs=True` and read
+`eplusout.err` to see them all. See {doc}`guide/evaluation`.
+
+## EnergyPlus finished a run with "severe" errors
+
+```text
+UserWarning: EnergyPlus finished run run_168e399ee9ea with 2 severe error(s): ** Severe  ** CheckWarmupConvergence:
+Loads Initialization, Zone="BLOCK2:OFFICEXNEX2F" did not converge after 25 warmup days. | ...
+```
+
+The run completed, so the result exists, but EnergyPlus considers something wrong. This particular message is about
+the *warm-up* (before simulating, EnergyPlus repeats the first days until zone temperatures and loads stop changing).
+It happened for 1 of the 32 designs of the office tutorial. On that design, raising "Maximum Number of Warmup Days"
+to 60 and to 200 did **not** remove the message and left the objectives identical, so do not expect that setting to be
+the remedy. bdopt cannot tell whether the totals of such a run are affected. Options:
+
+* keep the result (the default, `on_severe="warn"`) and look at the run (`keep_dirs=True`, then `eplusout.err`);
+* treat such designs as failed with `on_severe="nan"`: adaptive sampling then skips them;
+* find out why that region of the design space upsets the model.
+
 ## `NaN` in the results
 
 A simulation failed (see above). Adaptive sampling skips those points; for a fixed design drop them with

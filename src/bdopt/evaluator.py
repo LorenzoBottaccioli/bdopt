@@ -37,6 +37,9 @@ class RunRecord:
     run_dir: str | None = None
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    eplus_warnings: int = 0  #: ``Warning`` messages EnergyPlus wrote to ``eplusout.err``
+    eplus_severe: int = 0  #: ``Severe`` errors EnergyPlus wrote (a run can finish with some)
+    parameters: dict | None = None  #: the design that was simulated (parameter name -> value)
 
 
 class Evaluator:
@@ -119,6 +122,10 @@ class EnergyPlusEvaluator(Evaluator):
         a custom :class:`~bdopt.simulation.Runner` (e.g. :class:`~bdopt.simulation.CommandRunner`).
     on_error:
         ``'nan'`` (default: failed rows give NaN and a warning) or ``'raise'``.
+    on_severe:
+        what to do with a run that finishes but reports *severe* errors (e.g. a zone whose warm-up did not
+        converge): ``'warn'`` (default: keep the result and raise a ``UserWarning`` quoting the messages),
+        ``'nan'`` (treat the run as failed: NaN, run directory kept in ``err_dir``) or ``'ignore'``.
     """
 
     def __init__(
@@ -138,6 +145,7 @@ class EnergyPlusEvaluator(Evaluator):
         design_day: bool = False,
         progress: bool = False,
         on_error: str = "nan",
+        on_severe: str = "warn",
         search_paths: list[str | Path] | None = None,
     ):
         self.problem = problem
@@ -146,6 +154,9 @@ class EnergyPlusEvaluator(Evaluator):
             raise FileNotFoundError(f"weather file not found: {self.epw}")
         if on_error not in ("nan", "raise"):
             raise ValueError("on_error must be 'nan' or 'raise'")
+        if on_severe not in ("warn", "nan", "ignore"):
+            raise ValueError("on_severe must be 'warn', 'nan' or 'ignore'")
+        self.on_severe = on_severe
         self.out_dir = Path(out_dir).resolve()
         self.err_dir = Path(err_dir).resolve() if err_dir else self.out_dir / "failed"
         self.processes = max(1, int(processes))
@@ -164,7 +175,7 @@ class EnergyPlusEvaluator(Evaluator):
 
         self._expand = self.idf.has_class_prefix("HVACTemplate:")
         self._signature = "|".join(
-            f"{type(o).__name__}:{o.name}:{o.idf_outputs()}:{getattr(o, 'unit', '')}:"
+            f"{type(o).__name__}:{o.name}:{o.idf_outputs(self.eplus.version, self.idf)}:{getattr(o, 'unit', '')}:"
             f"{getattr(o, 'aggregate', '')}:{getattr(o, 'missing', '')}"
             for o in problem.objectives
         )
@@ -237,19 +248,32 @@ class EnergyPlusEvaluator(Evaluator):
         return IDF.from_text(text, idf.path)
 
     def _add_outputs(self, idf: IDF) -> None:
+        """Add ``Output:SQLite`` and the ``Output:Meter`` / ``Output:Variable`` objects the objectives need.
+
+        Nothing is added that EnergyPlus would complain about: an existing identical request is kept, and an
+        ``Output:Meter:MeterFileOnly`` for the same meter and frequency (which EnergyPlus warns about when the
+        same meter is also requested with ``Output:Meter``) is replaced by the ``Output:Meter`` we add.
+        """
         if not idf.by_class("Output:SQLite"):
             idf.add("Output:SQLite", "SimpleAndTabular")
-        have = {
-            (o.class_name.lower(), tuple(f.lower() for f in o.fields[:3]))
-            for o in idf.objects
-            if o.class_name.lower().startswith("output:")
-        }
+
+        def key_of(o) -> tuple[str, tuple[str, ...]]:
+            return o.class_name.lower(), tuple(f.strip().lower() for f in o.fields[:3])
+
+        have = {key_of(o) for o in idf.objects if o.class_name.lower().startswith("output:")}
         for obj in self.problem.objectives:
-            for cls, *fields in obj.idf_outputs():
-                key = (cls.lower(), tuple(str(f).lower() for f in fields[:3]))
-                if key not in have:
-                    idf.add(cls, *fields)
-                    have.add(key)
+            for cls, *fields in obj.idf_outputs(self.eplus.version, idf):
+                key = (cls.lower(), tuple(str(f).strip().lower() for f in fields[:3]))
+                if key in have:
+                    continue
+                if cls.lower() == "output:meter":
+                    meter, freq = key[1][0], key[1][1] if len(key[1]) > 1 else ""
+                    idf.remove([
+                        o for o in idf.by_class("Output:Meter:MeterFileOnly")
+                        if o.get(0).strip().lower() == meter and o.get(1).strip().lower() == freq
+                    ])
+                idf.add(cls, *fields)
+                have.add(key)
 
     # -- evaluation -----------------------------------------------------------------------------
     def _row_model(self, row: Mapping) -> str:
@@ -260,11 +284,23 @@ class EnergyPlusEvaluator(Evaluator):
     def _simulate(self, key: str, text: str) -> tuple[dict | None, RunRecord]:
         run_dir = self.out_dir / f"run_{key[:12]}"
         outcome = self.runner.run(text, self.epw, run_dir, self._expand, self.design_day)
-        rec = RunRecord(key, False, outcome.ok, outcome.elapsed, str(run_dir), list(outcome.errors))
+        rec = RunRecord(key, False, outcome.ok, outcome.elapsed, str(run_dir), list(outcome.errors),
+                        eplus_warnings=outcome.warnings, eplus_severe=outcome.severe)
+        severe_msg = ""
+        if outcome.ok and outcome.severe:
+            severe_msg = (
+                f"EnergyPlus finished run {run_dir.name} with {outcome.severe} severe error(s): "
+                + " | ".join(outcome.severe_messages[:2])
+            )
+            if self.on_severe == "warn":
+                rec.warnings.append(severe_msg)
+            elif self.on_severe == "nan":
+                rec.ok = False
+                rec.errors.append(severe_msg)
         with self._lock:
             self.n_simulations += 1
             self.simulation_time += outcome.elapsed
-        if not outcome.ok:
+        if not rec.ok:
             self.err_dir.mkdir(parents=True, exist_ok=True)
             dest = self.err_dir / run_dir.name
             shutil.rmtree(dest, ignore_errors=True)
@@ -326,14 +362,25 @@ class EnergyPlusEvaluator(Evaluator):
         ]
         results: dict[str, dict | None] = {}
         todo: dict[str, str] = {}
+        cached_recs: list[RunRecord] = []
         for k, t in zip(keys, texts, strict=True):
             if k in results or k in todo:
                 continue
             hit = self.cache.get(k) if self.cache is not None else None
             if hit is not None and all(n in hit for n in names):
-                results[k] = hit
+                sev = int(hit.get("_eplus_severe", 0))
+                rec = RunRecord(k, True, True, eplus_warnings=int(hit.get("_eplus_warnings", 0)), eplus_severe=sev)
+                if sev:
+                    msg = f"cached result of a run that had {sev} severe EnergyPlus error(s)"
+                    if self.on_severe == "nan":
+                        rec.ok = False
+                        rec.errors.append(msg + " (on_severe='nan')")
+                    elif self.on_severe == "warn":
+                        rec.warnings.append(msg)
+                results[k] = hit if rec.ok else None
+                cached_recs.append(rec)
                 self.n_cache_hits += 1
-                self.history.append(RunRecord(k, True, True))
+                self.history.append(rec)
             else:
                 todo[k] = t
         n_workers = max(1, processes or self.processes)
@@ -362,19 +409,25 @@ class EnergyPlusEvaluator(Evaluator):
         if bar is not None:
             bar.close()
         failed: list[RunRecord] = []
+        row_of = dict(zip(keys, rows, strict=True))
+        for rec in cached_recs:
+            rec.parameters = dict(row_of[rec.key])
+            if not rec.ok:
+                failed.append(rec)
         for k, values, rec in outs:
+            rec.parameters = dict(row_of[k])
             self.history.append(rec)
             results[k] = values
             if values is not None and self.cache is not None:
-                self.cache.put(k, values)
+                self.cache.put(k, {**values, "_eplus_severe": rec.eplus_severe, "_eplus_warnings": rec.eplus_warnings})
             if values is None:
                 failed.append(rec)
         if failed:
-            msg = "; ".join(f"{r.run_dir}: {' | '.join(r.errors[:2])}" for r in failed[:3])
+            msg = "; ".join(f"{r.run_dir or r.key[:12]}: {' | '.join(r.errors[:2])}" for r in failed[:3])
             if self.on_error == "raise":
                 raise RuntimeError(f"{len(failed)} EnergyPlus run(s) failed: {msg}")
             warnings.warn(f"{len(failed)} EnergyPlus run(s) failed, result is NaN: {msg}", stacklevel=2)
-        for _, _, rec in outs:
+        for rec in [*(r for _, _, r in outs), *cached_recs]:
             for w in rec.warnings:
                 warnings.warn(w, stacklevel=2)
         arr = np.array(
@@ -396,4 +449,6 @@ class EnergyPlusEvaluator(Evaluator):
             "failed": len(self.failures),
             "simulation_seconds": round(self.simulation_time, 2),
             "eplus_version": str(self.eplus.version),
+            "energyplus_warnings": sum(r.eplus_warnings for r in self.history),
+            "energyplus_severe": sum(r.eplus_severe for r in self.history),
         }

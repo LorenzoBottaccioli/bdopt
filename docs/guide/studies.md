@@ -142,6 +142,7 @@ See {doc}`objectives` for the meaning of each key.
 | `design_day` | `false` |
 | `progress` | `false` |
 | `on_error` | `nan` (or `raise`) |
+| `on_severe` | `warn` (or `nan`, `ignore`): runs that finish with severe EnergyPlus errors, see {doc}`evaluation` |
 
 ### `runner`
 
