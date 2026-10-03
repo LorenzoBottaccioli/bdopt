@@ -15,6 +15,7 @@ from pathlib import Path
 
 
 def file_digest(path: str | Path) -> str:
+    """SHA-256 of a file's content."""
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -23,6 +24,7 @@ def file_digest(path: str | Path) -> str:
 
 
 def make_key(idf_text: str, epw_digest: str, eplus_version: str, signature: str, flags: str = "") -> str:
+    """Cache key from everything that determines a result."""
     h = hashlib.sha256()
     for part in (idf_text, epw_digest, eplus_version, signature, flags):
         h.update(part.encode("utf-8", errors="replace"))
@@ -41,6 +43,7 @@ class RunCache:
         return self.dir / key[:2] / f"{key}.json"
 
     def get(self, key: str) -> dict | None:
+        """Stored objective values for ``key``, or ``None``."""
         p = self._path(key)
         try:
             return json.loads(p.read_text())
@@ -48,6 +51,7 @@ class RunCache:
             return None
 
     def put(self, key: str, values: dict) -> None:
+        """Store objective values for ``key`` (atomic write)."""
         p = self._path(key)
         p.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=p.parent, suffix=".tmp")

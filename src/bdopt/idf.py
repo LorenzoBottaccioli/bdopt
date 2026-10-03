@@ -28,17 +28,21 @@ class IDFObject:
 
     @property
     def name(self) -> str:
+        """The first field (the object's name for most classes)."""
         return self.fields[0] if self.fields else ""
 
     def get(self, index: int, default: str = "") -> str:
+        """Field ``index`` as a string, or ``default`` if the object has fewer fields."""
         return self.fields[index] if index < len(self.fields) else default
 
     def set(self, index: int, value) -> None:
+        """Set field ``index`` (extending the object if needed); ``value`` is formatted for an IDF."""
         while len(self.fields) <= index:
             self.fields.append("")
         self.fields[index] = _fmt(value)
 
     def to_text(self) -> str:
+        """The object as IDF text."""
         if not self.fields:
             return f"{self.class_name};"
         lines = [f"{self.class_name},"]
@@ -93,29 +97,35 @@ class IDF:
     # -- io ------------------------------------------------------------------------------------
     @classmethod
     def from_text(cls, text: str, path: Path | None = None) -> IDF:
+        """Parse IDF text."""
         objs = [IDFObject(toks[0], toks[1:]) for toks in _tokenize(text) if toks and toks[0]]
         return cls(objs, path)
 
     @classmethod
     def from_file(cls, path: str | Path) -> IDF:
+        """Read an ``.idf`` file."""
         p = Path(path)
         return cls.from_text(p.read_text(encoding="latin-1"), p)
 
     def to_text(self) -> str:
+        """The whole model as IDF text (comments are not preserved)."""
         return "\n\n".join(o.to_text() for o in self.objects) + "\n"
 
     def save(self, path: str | Path) -> Path:
+        """Write the model to ``path`` (directories are created) and return the path."""
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(self.to_text(), encoding="latin-1", errors="replace")
         return p
 
     def copy(self) -> IDF:
+        """Deep copy."""
         return IDF(copy.deepcopy(self.objects), self.path)
 
     # -- queries -------------------------------------------------------------------------------
     @property
     def version(self) -> Version | None:
+        """The EnergyPlus version in the model's ``Version`` object, or ``None``."""
         for o in self.objects:
             if o.class_name.lower() == "version":
                 try:
@@ -125,13 +135,16 @@ class IDF:
         return None
 
     def by_class(self, class_name: str) -> list[IDFObject]:
+        """All objects of a class (case-insensitive)."""
         key = class_name.lower()
         return [o for o in self.objects if o.class_name.lower() == key]
 
     def classes(self) -> set[str]:
+        """The set of class names present in the model."""
         return {o.class_name for o in self.objects}
 
     def has_class_prefix(self, prefix: str) -> bool:
+        """True if any object's class starts with ``prefix`` (case-insensitive), e.g. ``"HVACTemplate:"``."""
         p = prefix.lower()
         return any(o.class_name.lower().startswith(p) for o in self.objects)
 
@@ -152,11 +165,13 @@ class IDF:
 
     # -- edits ---------------------------------------------------------------------------------
     def add(self, class_name: str, *fields) -> IDFObject:
+        """Append an object and return it."""
         obj = IDFObject(class_name, [_fmt(f) for f in fields])
         self.objects.append(obj)
         return obj
 
     def remove(self, objs: Iterable[IDFObject]) -> None:
+        """Remove the given objects (compared by identity)."""
         ids = {id(o) for o in objs}
         self.objects = [o for o in self.objects if id(o) not in ids]
 

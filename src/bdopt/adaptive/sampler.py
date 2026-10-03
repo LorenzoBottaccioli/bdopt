@@ -59,7 +59,7 @@ class AdaptiveSampler:
         neighbourhoods), ``'voronoi'`` (pure exploration), ``'gp_variance'`` (largest predictive
         uncertainty) or ``'random'`` (baseline).
     surrogate:
-        model refitted at every iteration to measure convergence (default :class:`GPSurrogate`).
+        model refitted at every iteration to measure convergence (default :class:`~bdopt.surrogate.GPSurrogate`).
     seed:
         everything is deterministic given the seed, so with the evaluator's cache an interrupted run is
         resumed by simply running it again: already simulated points are not repeated.

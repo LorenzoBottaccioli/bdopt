@@ -10,6 +10,7 @@ from .eplus import find_installations
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point of the ``bdopt`` command; returns the process exit code."""
     ap = argparse.ArgumentParser(prog="bdopt", description="Building design optimization with EnergyPlus")
     ap.add_argument("--version", action="version", version=f"bdopt {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)

@@ -28,6 +28,7 @@ _FREQ_LABEL = {
 
 
 class MissingOutput(KeyError):
+    """A requested meter or variable was not reported (and ``missing="error"``)."""
     pass
 
 
@@ -66,9 +67,11 @@ class RunResults:
         return np.array([v[0] for v in vals], dtype=float), rows[0][1]
 
     def meter(self, name: str, frequency: str = "Run Period") -> np.ndarray:
+        """Values of a meter at a reporting frequency (default: run period)."""
         return self.series(name, True, None, frequency)[0]
 
     def variable(self, key: str, name: str, frequency: str = "Run Period") -> np.ndarray:
+        """Values of an output variable for a key at a reporting frequency."""
         return self.series(name, False, key, frequency)[0]
 
 

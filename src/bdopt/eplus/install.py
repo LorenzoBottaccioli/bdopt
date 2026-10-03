@@ -88,10 +88,12 @@ class EnergyPlus:
     # -- helpers -------------------------------------------------------------------------------
     @property
     def idd(self) -> IDD:
+        """The parsed ``Energy+.idd`` of this installation."""
         return IDD.load(self.idd_path)
 
     @property
     def updater_dir(self) -> Path:
+        """Folder of the ``IDFVersionUpdater`` transition programs."""
         return self.root / "PreProcess" / "IDFVersionUpdater"
 
     def __str__(self) -> str:

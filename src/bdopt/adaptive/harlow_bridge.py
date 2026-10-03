@@ -113,6 +113,7 @@ class HarlowAdaptiveSampler:
         test_data: pd.DataFrame | None = None,
         verbose: bool = False,
     ) -> AdaptiveResult:
+        """Run harlow's sampler; same arguments and result type as :meth:`AdaptiveSampler.run`."""
         samplers, surrogates = _import_harlow()
         pr = self.problem
         d = pr.n_var

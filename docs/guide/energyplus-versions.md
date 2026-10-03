@@ -1,6 +1,7 @@
 # EnergyPlus versions (8.7 and newer)
 
-Everything that depends on the EnergyPlus version lives in `bdopt/eplus/`.
+bdopt works with every EnergyPlus release from 8.7. Everything that depends on the version lives in
+`bdopt/eplus/`; this page says what is handled and how.
 
 | Aspect | How it is handled | Checked on |
 |---|---|---|

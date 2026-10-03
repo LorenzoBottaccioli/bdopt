@@ -57,6 +57,7 @@ class Version:
 
     @property
     def short(self) -> str:
+        """``"major.minor"``, e.g. ``"9.6"``."""
         return f"{self.major}.{self.minor}"
 
     @property

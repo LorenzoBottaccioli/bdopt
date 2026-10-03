@@ -31,7 +31,8 @@ viz = ["matplotlib>=3.6"]
 yaml = ["pyyaml>=6"]
 harlow = ["harlow"]  # note: harlow itself requires tensorflow; bdopt's native samplers do not
 all = ["bdopt[torch,viz,yaml]"]
-dev = ["pytest>=7", "pytest-cov", "ruff", "bdopt[all]"]
+docs = ["sphinx>=7", "furo", "myst-nb", "sphinx-copybutton", "sphinx-design", "bdopt[viz]"]
+dev = ["pytest>=7", "pytest-cov", "ruff", "nbformat", "nbclient", "ipykernel", "bdopt[all]"]
 
 [project.scripts]
 bdopt = "bdopt.cli:main"

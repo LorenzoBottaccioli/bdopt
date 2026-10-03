@@ -68,8 +68,19 @@ EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH
 | `bdopt.DesignStudy`, `bdopt run study.yaml` | the whole pipeline from a YAML/JSON file (`examples/study.yaml`) |
 | `bdopt.viz` | pairplot, correlation heatmap, parallel coordinates, convergence, parity, Pareto (matplotlib) |
 
-More: [docs/VERSIONS.md](docs/VERSIONS.md) (EnergyPlus versions),
-[docs/ADAPTIVE.md](docs/ADAPTIVE.md) (algorithms and when they help).
+## Documentation
+
+The documentation is a Sphinx site in `docs/` (build it with `pip install -e ".[docs]"` then
+`sphinx-build -W -b html docs docs/_build/html`):
+
+* [Installation](docs/installation.md), [quick start](docs/quickstart.md), [concepts](docs/concepts.md);
+* [user guide](docs/guide/index.md): model and parameters, objectives, running EnergyPlus, fixed designs,
+  [adaptive sampling](docs/guide/adaptive-sampling.md), surrogates, optimization,
+  [studies from a YAML file](docs/guide/studies.md), [EnergyPlus versions](docs/guide/energyplus-versions.md);
+* [tutorials](docs/tutorials/index.md): executed notebooks (adaptive sampling basics, an office building on
+  EnergyPlus, mixed variables and constraints);
+* API reference (generated from the docstrings), [troubleshooting](docs/faq.md),
+  [contributing](docs/contributing.md), [changelog](docs/changelog.md).
 
 ## Measured
 
@@ -121,6 +132,7 @@ pytest -m "not eplus and not slow"                                   # no Energy
 BDOPT_EPLUS_PATH=/opt/eplus pytest -m eplus                          # every installed version
 BDOPT_TEST_EPLUS_VERSIONS=8.7,9.6 pytest -m eplus -k "not golden"   # chosen versions
 python tools/idd_diff.py OLD_ROOT NEW_ROOT                           # what changed between two versions
+sphinx-build -W -b html docs docs/_build/html                        # the documentation
 ```
 
 MIT licensed. References for the algorithms: Crombecq et al. (2011), SIAM J. Sci. Comput. 33(4);

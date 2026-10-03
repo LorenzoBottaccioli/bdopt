@@ -14,3 +14,5 @@ htmlcov/
 outputdir/
 bdopt_study/
 out/
+docs/_build/
+.jupyter_cache/

@@ -45,6 +45,20 @@ class Evaluator:
     problem: Problem
 
     def evaluate(self, df: pd.DataFrame, keep_input: bool = False) -> pd.DataFrame:
+        """Objective values for a table of parameter values.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            One column per parameter (names as in the problem), one row per design.
+        keep_input : bool
+            Also return the parameter columns.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One column per objective, same index as ``df``.
+        """
         raise NotImplementedError
 
     def evaluate_unit(self, U: np.ndarray) -> np.ndarray:
@@ -70,6 +84,7 @@ class FunctionEvaluator(Evaluator):
         self.problem, self.func, self.vectorized = problem, func, vectorized
 
     def evaluate(self, df: pd.DataFrame, keep_input: bool = False) -> pd.DataFrame:
+        """Evaluate every row with the python function (see class docstring)."""
         names = self.problem.objective_names
         if self.vectorized:
             arr = np.asarray(self.func(df[self.problem.parameter_names]), dtype=float)
@@ -88,7 +103,7 @@ class EnergyPlusEvaluator(Evaluator):
     problem, building, epw:
         the problem, the model (:class:`~bdopt.idf.IDF` or an ``.idf`` path) and the weather file.
     eplus:
-        which EnergyPlus to use: an :class:`~bdopt.eplus.EnergyPlus`, a version string (``"9.6"``),
+        which EnergyPlus to use: an :class:`~bdopt.EnergyPlus`, a version string (``"9.6"``),
         a path, or ``None`` to pick the installed version that matches the model.
     auto_upgrade:
         if no installed version matches the model, upgrade the model to the newest installed version
@@ -277,6 +292,28 @@ class EnergyPlusEvaluator(Evaluator):
         processes: int | None = None,
         keep_dirs: bool | None = None,
     ) -> pd.DataFrame:
+        """Run EnergyPlus for every row of ``df`` and read the objectives.
+
+        Identical rows are simulated once, finished simulations are taken from the cache, the rest run in
+        parallel (``processes``). A failed run gives NaN for its row (and a warning), or raises with
+        ``on_error="raise"``.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            One column per parameter, one row per design.
+        keep_input : bool
+            Also return the parameter columns.
+        processes : int, optional
+            Override the number of parallel EnergyPlus processes for this call.
+        keep_dirs : bool, optional
+            Keep every run directory (default: only failed runs are kept).
+
+        Returns
+        -------
+        pandas.DataFrame
+            One column per objective, same index as ``df``.
+        """
         if keep_dirs is not None:
             self.keep_dirs = keep_dirs
         names = self.problem.objective_names
@@ -348,9 +385,11 @@ class EnergyPlusEvaluator(Evaluator):
 
     @property
     def failures(self) -> list[RunRecord]:
+        """Records of the runs that failed (``errors`` has EnergyPlus' messages)."""
         return [r for r in self.history if not r.ok]
 
     def stats(self) -> dict:
+        """Counters: simulations run, cache hits, failures, simulation seconds, EnergyPlus version."""
         return {
             "simulations": self.n_simulations,
             "cache_hits": self.n_cache_hits,

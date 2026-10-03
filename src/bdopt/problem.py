@@ -50,10 +50,12 @@ class Problem:
     # -- names / shapes --------------------------------------------------------------------------
     @property
     def parameter_names(self) -> list[str]:
+        """Names of the parameters, in order."""
         return [p.name for p in self.parameters]
 
     @property
     def objective_names(self) -> list[str]:
+        """Names of the objectives, in order."""
         return [o.name for o in self.objectives]
 
     def names(self) -> list[str]:
@@ -62,10 +64,12 @@ class Problem:
 
     @property
     def n_var(self) -> int:
+        """Number of parameters (dimension of the unit cube)."""
         return len(self.parameters)
 
     @property
     def n_obj(self) -> int:
+        """Number of objectives."""
         return len(self.objectives)
 
     @property
@@ -107,6 +111,7 @@ class Problem:
 
     @property
     def discrete_mask(self) -> np.ndarray:
+        """Boolean array telling which parameters are integer or categorical."""
         return np.array([p.is_discrete for p in self.parameters])
 
     # -- constraints -----------------------------------------------------------------------------
@@ -118,6 +123,7 @@ class Problem:
         return np.array([[float(c(r)) for c in self.constraints] for r in rows])
 
     def feasible(self, df: pd.DataFrame) -> np.ndarray:
+        """Boolean mask of the rows of ``df`` that satisfy every constraint."""
         g = self.violation(df)
         return np.all(g <= 0, axis=1) if g.size else np.ones(len(df), dtype=bool)
 

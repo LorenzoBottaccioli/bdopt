@@ -20,6 +20,7 @@ from .idf import IDF, IDFObject
 
 
 class ParameterError(ValueError):
+    """Invalid parameter definition, or a selector that does not match the model."""
     pass
 
 
@@ -34,17 +35,20 @@ class RangeParameter:
             raise ParameterError(f"max_val ({max_val}) must be greater than min_val ({min_val})")
         self.min, self.max = float(min_val), float(max_val)
 
-    min_val = property(lambda self: self.min)
-    max_val = property(lambda self: self.max)
+    min_val = property(lambda self: self.min, doc="Lower bound (alias of ``min``).")
+    max_val = property(lambda self: self.max, doc="Upper bound (alias of ``max``).")
 
     @property
     def bounds(self) -> tuple[float, float]:
+        """``(min, max)``."""
         return self.min, self.max
 
     def decode(self, u: np.ndarray) -> np.ndarray:
+        """Map unit-cube coordinates ``u`` in [0, 1] to values in ``[min, max]``."""
         return self.min + np.clip(u, 0.0, 1.0) * (self.max - self.min)
 
     def encode(self, v) -> np.ndarray:
+        """Map values in ``[min, max]`` to unit-cube coordinates."""
         return (np.asarray(v, dtype=float) - self.min) / (self.max - self.min)
 
     def __repr__(self) -> str:
@@ -60,11 +64,13 @@ class IntegerParameter(RangeParameter):
         super().__init__(int(min_val), int(max_val))
 
     def decode(self, u: np.ndarray) -> np.ndarray:
+        """Map unit-cube coordinates to integers; each integer owns an equal-width bin."""
         n = int(self.max - self.min) + 1
         idx = np.minimum(np.floor(np.clip(u, 0.0, 1.0) * n), n - 1)
         return (self.min + idx).astype(int)
 
     def encode(self, v) -> np.ndarray:
+        """Map integers to the centre of their bin in the unit cube."""
         n = int(self.max - self.min) + 1
         return (np.asarray(v, dtype=float) - self.min + 0.5) / n
 
@@ -86,13 +92,16 @@ class CategoryParameter:
 
     @property
     def bounds(self) -> tuple[float, float]:
+        """``(0, n_options - 1)``: the option index range."""
         return 0.0, float(len(self.options) - 1)
 
     def index(self, u: np.ndarray) -> np.ndarray:
+        """Index of the option selected by unit-cube coordinates ``u``."""
         n = len(self.options)
         return np.minimum(np.floor(np.clip(u, 0.0, 1.0) * n), n - 1).astype(int)
 
     def decode(self, u: np.ndarray) -> np.ndarray:
+        """Map unit-cube coordinates to options (object array)."""
         arr = np.empty(np.shape(u), dtype=object)
         idx = self.index(np.asarray(u, dtype=float))
         flat = arr.reshape(-1)
@@ -101,6 +110,13 @@ class CategoryParameter:
         return arr
 
     def encode(self, v) -> np.ndarray:
+        """Map options to the centre of their bin in the unit cube.
+
+        Raises
+        ------
+        ParameterError
+            If a value is not one of the options.
+        """
         lookup = {str(o): i for i, o in enumerate(self.options)}
         vals = np.atleast_1d(np.asarray(v, dtype=object))
         try:
@@ -139,6 +155,7 @@ class FieldSelector:
 
     @property
     def default_name(self) -> str:
+        """Name used for a parameter that is not given one."""
         return f"{self.class_name}:{self.object_name}:{self.field_name or self.field_index}"
 
     def _resolve(self, idd: IDD) -> tuple[str, int]:
@@ -147,6 +164,7 @@ class FieldSelector:
         return resolve_class(idd, self.class_name), int(self.field_index)  # type: ignore[arg-type]
 
     def targets(self, idf: IDF, idd: IDD) -> list[IDFObject]:
+        """IDF objects selected by this selector in ``idf`` (resolved against ``idd``)."""
         cls, _ = self._resolve(idd)
         pred = self.where
         if isinstance(pred, dict):
@@ -161,6 +179,15 @@ class FieldSelector:
         return idf.find(cls, self.object_name, pred)
 
     def validate(self, idf: IDF, idd: IDD) -> int:
+        """Check that the selector matches at least one object; return how many.
+
+        Raises
+        ------
+        ParameterError
+            If no object matches (typo in the object name, or an absent class).
+        KeyError
+            If the class or field does not exist in this EnergyPlus version (with suggestions).
+        """
         n = len(self.targets(idf, idd))
         if n == 0:
             raise ParameterError(
@@ -170,6 +197,7 @@ class FieldSelector:
         return n
 
     def apply(self, idf: IDF, value, idd: IDD) -> None:
+        """Write ``value`` into the selected field of every selected object (in place)."""
         _, idx = self._resolve(idd)
         objs = self.targets(idf, idd)
         if not objs:
@@ -191,9 +219,11 @@ class GenericSelector:
         self.setter, self.default_name = setter, name
 
     def validate(self, idf: IDF, idd: IDD) -> int:
+        """Always valid (the setter is arbitrary code); returns 1."""
         return 1
 
     def apply(self, idf: IDF, value, idd: IDD) -> None:
+        """Call the setter with ``idf`` and ``value``."""
         self.setter(idf, value)
 
     def __repr__(self) -> str:
@@ -221,10 +251,12 @@ class Parameter:
 
     @property
     def kind(self) -> str:
+        """``"continuous"``, ``"integer"`` or ``"categorical"``."""
         return self.value_descriptor.kind
 
     @property
     def is_discrete(self) -> bool:
+        """True for integer and categorical parameters."""
         return self.kind != "continuous"
 
     def __repr__(self) -> str:

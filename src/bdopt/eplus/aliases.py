@@ -51,6 +51,7 @@ CLASS_ALIAS_GROUPS: list[tuple[str, ...]] = [
 
 
 def class_candidates(class_name: str) -> list[str]:
+    """A class name followed by its known renamed equivalents."""
     out = [class_name]
     for group in CLASS_ALIAS_GROUPS:
         if norm(class_name) in {norm(g) for g in group}:

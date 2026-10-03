@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use bdopt in your work, please cite it as below."
+title: "bdopt: building design optimization with EnergyPlus"
+type: software
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/lorenzobottaccioli/buidlingdesginoptimization"
+abstract: >-
+  Python library for building design optimization with EnergyPlus 8.7 and newer: parametric studies,
+  adaptive sampling, surrogate models and multi-objective optimization.
+keywords:
+  - EnergyPlus
+  - building energy simulation
+  - surrogate modelling
+  - adaptive sampling
+  - multi-objective optimization
+authors:
+  - name: "bdopt contributors"

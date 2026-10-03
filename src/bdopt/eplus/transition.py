@@ -22,6 +22,7 @@ _IS_WINDOWS = sys.platform.startswith("win")
 
 
 class TransitionError(RuntimeError):
+    """An IDF cannot be upgraded (no transition path, or a downgrade was requested)."""
     pass
 
 

@@ -75,6 +75,7 @@ def parameter_from_config(spec: dict) -> Parameter:
 
 
 def objective_from_config(spec: str | dict) -> str | Objective:
+    """Objective from a configuration entry: a meter name, ``{meter: ...}`` or ``{variable: ...}``."""
     if isinstance(spec, str):
         return spec
     direction = spec.get("direction", "min")
@@ -89,6 +90,7 @@ def objective_from_config(spec: str | dict) -> str | Objective:
 
 
 def make_surrogate(spec: dict | str | None):
+    """Surrogate from the ``surrogate`` section of a configuration (``gp``, ``mlp`` or ``torch_mlp``)."""
     from .surrogate import GPSurrogate, MLPSurrogate
 
     if spec is None:
@@ -120,6 +122,7 @@ class StudyResults:
     stats: dict = field(default_factory=dict)
 
     def save(self, directory: str | Path) -> Path:
+        """Write the results (CSV files, ``surrogate.pkl``, ``stats.json``) into ``directory``."""
         d = Path(directory)
         d.mkdir(parents=True, exist_ok=True)
         self.data.to_csv(d / "train.csv", index=False)
@@ -152,6 +155,7 @@ class DesignStudy:
 
     @classmethod
     def from_config(cls, source: dict | str | Path) -> DesignStudy:
+        """Build a study from a dict or a ``.json`` / ``.yaml`` file (relative paths are relative to the file)."""
         cfg, base = load_config(source)
         return cls(cfg, base)
 
@@ -175,6 +179,7 @@ class DesignStudy:
 
     @property
     def evaluator(self) -> EnergyPlusEvaluator:
+        """The :class:`~bdopt.EnergyPlusEvaluator` described by the configuration (created on first use)."""
         if self._evaluator is None:
             cfg = self.cfg
             e = cfg.get("eplus", {})
@@ -205,6 +210,7 @@ class DesignStudy:
 
     # -- stages ----------------------------------------------------------------------------------
     def sample(self) -> AdaptiveResult | tuple[pd.DataFrame, pd.DataFrame]:
+        """Run the sampling stage (adaptive or a fixed design) and return its result."""
         s = self.cfg.get("sampling", {})
         method = s.get("method", "adaptive")
         seed = s.get("seed", 0)
@@ -247,6 +253,7 @@ class DesignStudy:
         return train, test
 
     def run(self, optimize: bool = True) -> StudyResults:
+        """Run sampling, surrogate training and (unless ``optimize=False``) optimization."""
         sampled = self.sample()
         if isinstance(sampled, AdaptiveResult):
             data, test, history = sampled.data, sampled.test, sampled.history

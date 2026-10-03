@@ -35,6 +35,7 @@ class RunOutcome:
 
     @property
     def sql_path(self) -> Path:
+        """Path of the ``eplusout.sql`` of the run."""
         return self.run_dir / "eplusout.sql"
 
 
@@ -62,6 +63,7 @@ class Runner:
 
     # to override ----------------------------------------------------------------------------
     def command(self, idf: Path, epw: Path | None, run_dir: Path, expand: bool, design_day: bool) -> list[str]:
+        """Command line (list of arguments) to run one simulation."""
         raise NotImplementedError
 
     def _args(self, idf, epw, run_dir, expand, design_day) -> list[str]:
@@ -86,6 +88,7 @@ class Runner:
         expand_objects: bool = False,
         design_day: bool = False,
     ) -> RunOutcome:
+        """Write ``idf_text`` into ``run_dir``, run EnergyPlus there and return a :class:`RunOutcome`."""
         run_dir = Path(run_dir).resolve()
         if run_dir.exists():
             shutil.rmtree(run_dir, ignore_errors=True)
@@ -128,6 +131,7 @@ class LocalRunner(Runner):
     """Run an EnergyPlus installation found on this machine."""
 
     def command(self, idf, epw, run_dir, expand, design_day) -> list[str]:
+        """``[energyplus, -w EPW, -d DIR, [-x], [-D], IDF]``."""
         return [str(self.eplus.executable), *self._args(idf, epw, run_dir, expand, design_day)]
 
 
@@ -154,6 +158,7 @@ class CommandRunner(Runner):
         self.path_map = {str(Path(k)): v for k, v in (path_map or {}).items()}
 
     def map_path(self, p: Path) -> str:
+        """Translate a host path with ``path_map`` (longest prefix wins)."""
         s = str(p)
         for host, remote in sorted(self.path_map.items(), key=lambda kv: -len(kv[0])):
             if s == host or s.startswith(host + os.sep):
@@ -161,6 +166,7 @@ class CommandRunner(Runner):
         return s
 
     def command(self, idf, epw, run_dir, expand, design_day) -> list[str]:
+        """The prefix, the executable and the translated arguments."""
         args = self._args(
             self.map_path(idf),
             self.map_path(epw) if epw is not None else None,

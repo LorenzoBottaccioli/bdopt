@@ -29,6 +29,7 @@ class Objective:
 
     @property
     def sign(self) -> float:
+        """``+1`` for an objective to minimise, ``-1`` to maximise."""
         return 1.0 if self.direction == "min" else -1.0
 
     def idf_outputs(self) -> list[tuple[str, ...]]:
@@ -65,10 +66,12 @@ class MeterReader(Objective):
 
     @property
     def candidates(self) -> list[str]:
+        """Meter names requested for this meter across EnergyPlus versions."""
         return meter_candidates(self.meter)
 
     def idf_outputs(self) -> list[tuple[str, ...]]:
         # the ``Output:Meter`` key field is called ``Name`` (<9.0) / ``Key Name``: both are field 0
+        """``Output:Meter`` objects needed to report this meter (all version-specific candidates)."""
         return [("Output:Meter", c, "RunPeriod") for c in self.candidates]
 
 
@@ -92,6 +95,7 @@ class VariableReader(Objective):
         self.aggregate, self.frequency, self.missing = aggregate, frequency, missing
 
     def idf_outputs(self) -> list[tuple[str, ...]]:
+        """``Output:Variable`` object needed to report this variable."""
         return [("Output:Variable", self.key_value, self.variable, self.frequency)]
 
 
@@ -109,10 +113,12 @@ class FunctionReader(Objective):
         self.func, self.outputs = func, list(outputs or [])
 
     def idf_outputs(self) -> list[tuple[str, ...]]:
+        """The ``Output:*`` objects declared for the custom function."""
         return list(self.outputs)
 
 
 def as_objective(obj: str | Objective) -> Objective:
+    """Convert a meter name into a :class:`MeterReader`; pass :class:`Objective` instances through."""
     if isinstance(obj, Objective):
         return obj
     if isinstance(obj, str):

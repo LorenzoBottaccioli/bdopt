@@ -16,6 +16,18 @@ jobs:
       - run: pip install ruff
       - run: ruff check src tests tools
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[docs,torch,dev]"
+      # -W: warnings are errors (broken references, missing docstrings in the API pages ...)
+      - run: DOCS_INTERSPHINX=1 sphinx-build -W --keep-going -b html docs docs/_build/html
+      - uses: actions/upload-artifact@v4
+        with: { name: docs-html, path: docs/_build/html }
+
   unit:
     name: unit (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}

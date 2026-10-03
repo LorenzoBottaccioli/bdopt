@@ -20,10 +20,10 @@ from .metrics import regression_metrics
 
 
 class Surrogate(ABC):
-    """Base class. Subclasses implement :meth:`_fit` and :meth:`_predict` on standardised outputs."""
+    """Base class. Subclasses implement ``_fit`` and ``_predict`` on standardised outputs."""
 
     problem: Problem | None = None
-    #: whether :meth:`predict_unit_std` returns an uncertainty estimate
+    #: whether ``predict_unit_std`` returns an uncertainty estimate
     has_uncertainty = False
 
     # -- to implement ----------------------------------------------------------------------------
@@ -46,6 +46,7 @@ class Surrogate(ABC):
         return self.fit_unit(U, Y, problem)
 
     def fit_unit(self, U: np.ndarray, Y: np.ndarray, problem: Problem | None = None) -> Surrogate:
+        """Fit on unit-cube inputs ``U`` and real-valued outputs ``Y`` (rows with NaN are dropped)."""
         U, Y = np.asarray(U, dtype=float), np.asarray(Y, dtype=float).reshape(len(U), -1)
         ok = np.isfinite(U).all(axis=1) & np.isfinite(Y).all(axis=1)
         if not ok.all():
@@ -132,6 +133,7 @@ class Surrogate(ABC):
 
     @staticmethod
     def load(path: str | Path, problem: Problem | None = None) -> Surrogate:
+        """Load a model saved with :meth:`save`; pass ``problem`` if it could not be saved with the model."""
         with open(path, "rb") as fh:
             model = pickle.load(fh)
         if problem is not None:

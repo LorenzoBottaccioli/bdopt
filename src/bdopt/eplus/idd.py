@@ -32,6 +32,7 @@ class IDD:
 
     @classmethod
     def from_text(cls, text: str, path=None) -> IDD:
+        """Parse IDD text."""
         classes: dict[str, list[str]] = {}
         version = None
         current: list[str] | None = None
@@ -79,12 +80,14 @@ class IDD:
         return iter(self._classes)
 
     def canonical_class(self, class_name: str) -> str:
+        """Class name as spelled in the IDD (lookup is case/whitespace-insensitive)."""
         try:
             return self._lookup[norm(class_name)]
         except KeyError:
             raise KeyError(f"class {class_name!r} not in IDD {self.version}") from None
 
     def fields(self, class_name: str) -> list[str]:
+        """Ordered field names of a class."""
         return self._classes[self.canonical_class(class_name)]
 
     def field_index(self, class_name: str, field_name: str) -> int | None:

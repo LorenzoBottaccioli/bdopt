@@ -25,8 +25,12 @@ from .problem import Problem
 _BIG = 1e30
 
 
-class _Model(Protocol):
-    def evaluate_unit(self, U: np.ndarray) -> np.ndarray: ...
+class UnitModel(Protocol):
+    """Anything that maps unit-cube points to objective values: a surrogate or an evaluator."""
+
+    def evaluate_unit(self, U: np.ndarray) -> np.ndarray:
+        """Objective values ``(n, n_obj)`` for unit-cube points ``(n, n_var)``."""
+        ...
 
 
 @dataclass
@@ -41,10 +45,12 @@ class ParetoFront:
 
     @property
     def parameters(self) -> pd.DataFrame:
+        """The parameter columns of the front."""
         return self.df[self.problem.parameter_names]
 
     @property
     def objectives(self) -> pd.DataFrame:
+        """The objective columns of the front."""
         return self.df[self.problem.objective_names]
 
     def closest_to_ideal(
@@ -67,6 +73,7 @@ class ParetoFront:
         return self.df.iloc[int(np.argmin(dist))]
 
     def to_df(self) -> pd.DataFrame:
+        """A copy of the front as a table."""
         return self.df.copy()
 
 
@@ -80,7 +87,7 @@ class _SnapRepair(Repair):
 
 
 class _PymooAdapter(_PymooProblem):
-    def __init__(self, problem: Problem, model: _Model):
+    def __init__(self, problem: Problem, model: UnitModel):
         super().__init__(
             n_var=problem.n_var,
             n_obj=problem.n_obj,
@@ -103,7 +110,9 @@ class _PymooAdapter(_PymooProblem):
 class Optimizer(Protocol):
     """Minimal optimizer interface: other back-ends can be added without touching the rest."""
 
-    def run(self, problem: Problem, model: _Model) -> ParetoFront: ...
+    def run(self, problem: Problem, model: UnitModel) -> ParetoFront:
+        """Return the non-dominated designs of ``problem`` evaluated with ``model``."""
+        ...
 
 
 class _PymooOptimizer:
@@ -113,7 +122,7 @@ class _PymooOptimizer:
     def _algorithm(self, problem: Problem):
         raise NotImplementedError
 
-    def run(self, problem: Problem, model: _Model) -> ParetoFront:
+    def run(self, problem: Problem, model: UnitModel) -> ParetoFront:
         res = minimize(
             _PymooAdapter(problem, model),
             self._algorithm(problem),
@@ -161,13 +170,13 @@ class NSGA3(_PymooOptimizer):
         )
 
 
-def nsga2(problem: Problem, model: _Model, pop_size: int = 100, n_gen: int = 100, seed: int = 0,
+def nsga2(problem: Problem, model: UnitModel, pop_size: int = 100, n_gen: int = 100, seed: int = 0,
           verbose: bool = False) -> ParetoFront:
     """Pareto front of ``problem`` using ``model`` (a surrogate or an evaluator) -- NSGA-II."""
     return NSGA2(pop_size=pop_size, n_gen=n_gen, seed=seed, verbose=verbose).run(problem, model)
 
 
-def nsga3(problem: Problem, model: _Model, pop_size: int = 100, n_gen: int = 100, seed: int = 0,
+def nsga3(problem: Problem, model: UnitModel, pop_size: int = 100, n_gen: int = 100, seed: int = 0,
           n_partitions: int = 12, verbose: bool = False) -> ParetoFront:
     """Pareto front of ``problem`` using ``model`` -- NSGA-III."""
     return NSGA3(n_partitions=n_partitions, pop_size=pop_size, n_gen=n_gen, seed=seed,
