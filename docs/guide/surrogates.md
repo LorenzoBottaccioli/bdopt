@@ -4,7 +4,7 @@ A surrogate is a fast statistical model of the simulator, trained on simulated d
 one interface ({class}`~bdopt.surrogate.Surrogate`), take a table of parameters and predict the objectives.
 
 ```python
-from bdopt.surrogate import GPSurrogate, MLPSurrogate, TorchMLP
+from bdopt.surrogate import GPSurrogate
 
 model = GPSurrogate().fit(result.data, problem)          # data: parameters + objective columns
 predictions = model.predict(new_designs)                  # table with one column per objective
@@ -17,14 +17,30 @@ dropped with a warning; at least three points are needed.
 
 ## Which model?
 
-| Model | Strengths | Notes |
-|---|---|---|
-| {class}`~bdopt.surrogate.GPSurrogate` | most accurate on small data (tens of points), smooth responses; gives a predictive standard deviation | one Gaussian process per objective with a length scale per parameter; cost grows as $n^3$, fine up to a few hundred points |
-| {class}`~bdopt.surrogate.MLPSurrogate` | cheap, no extra dependency | scikit-learn `MLPRegressor` with a small grid search over size and regularisation |
-| {class}`~bdopt.surrogate.TorchMLP` | flexible, many points, ensembles for uncertainty | PyTorch (`pip install "bdopt[torch]"`) |
+All of them are built from a short name too: `make_surrogate("random_forest")`, `make_surrogate("rbf")`, ...
+(also the `surrogate: {type: ...}` entry of a study file).
 
-For a few dozen to a few hundred simulations start with the Gaussian process. Compare models on the same
-held-out simulations rather than by intuition; {doc}`../tutorials/02_office_building` does exactly that.
+| Name | Class | Strengths | Notes |
+|---|---|---|---|
+| `gp` | {class}`~bdopt.surrogate.GPSurrogate` | most accurate on small, smooth data; predictive standard deviation | one Gaussian process per objective, a length scale per parameter; cost grows as $n^3$ |
+| `multitask_gp` | {class}`~bdopt.surrogate.MultiTaskGPSurrogate` | objectives share one kernel and are coupled by a learned task covariance; uncertainty | PyTorch; useful when objectives are strongly correlated |
+| `deep_kernel_gp` | {class}`~bdopt.surrogate.DeepKernelGPSurrogate` | a network learns the coordinates in which a GP kernel acts; uncertainty | PyTorch; for responses that are smooth only after a non-linear change of coordinates |
+| `random_forest` | {class}`~bdopt.surrogate.RandomForestSurrogate` | robust, mixed and discrete parameters, uncertainty from the trees | piecewise constant |
+| `extra_trees` | {class}`~bdopt.surrogate.ExtraTreesSurrogate` | like the forest, smoother; uncertainty | |
+| `gradient_boosting` | {class}`~bdopt.surrogate.GradientBoostingSurrogate` | strong on larger data sets | one model per objective |
+| `svr` | {class}`~bdopt.surrogate.SVRSurrogate` | RBF support vector regression, `C` and `gamma` by cross-validation | |
+| `kernel_ridge` | {class}`~bdopt.surrogate.KernelRidgeSurrogate` | RBF or Laplacian kernel, regularisation by cross-validation | |
+| `knn` | {class}`~bdopt.surrogate.KNNSurrogate` | baseline | cannot interpolate smoothly |
+| `polynomial` | {class}`~bdopt.surrogate.PolynomialSurrogate` | the classical response surface; degree 1 to 3 and ridge by cross-validation | needs few points; coefficients are interpretable |
+| `rbf` | {class}`~bdopt.surrogate.RBFSurrogate` | radial basis function interpolation (thin-plate, cubic, multiquadric) | almost exact at the training points |
+| `mlp` | {class}`~bdopt.surrogate.MLPSurrogate` | cheap neural network | scikit-learn `MLPRegressor` with a grid search over size and regularisation |
+| `torch_mlp` | {class}`~bdopt.surrogate.TorchMLP` | flexible, many points, ensembles for uncertainty | PyTorch |
+| `mc_dropout_mlp` | {class}`~bdopt.surrogate.MCDropoutMLP` | network with a predictive standard deviation from dropout (an approximate Bayesian network) | PyTorch |
+| `auto` | {class}`~bdopt.surrogate.AutoSurrogate` | cross-validates a list of candidates and keeps the best | `selected_` and `cv_scores_` tell what it chose |
+
+For a few dozen to a few hundred simulations start with the Gaussian process, or let `auto` decide. Compare models
+on the same held-out simulations rather than by intuition; {doc}`../tutorials/02_office_building` and the
+measurements on the platform tests (see the README) do exactly that.
 
 ### Gaussian process
 
@@ -50,6 +66,17 @@ Full-batch Adam with early stopping on a validation split (used when there are a
 `n_ensemble > 1` trains several networks with different seeds; the mean is the prediction and the spread is the
 uncertainty. The default architecture is a 32-64-32 ReLU network. Training runs on one thread, which is about ten
 times faster than the default for networks this small. Results are reproducible for a fixed `seed`.
+
+### Choosing automatically
+
+```python
+from bdopt.surrogate import AutoSurrogate
+
+model = AutoSurrogate(cv=5).fit(result.data, problem)
+model.selected_, model.cv_scores_     # the winner and every candidate's cross-validated error
+```
+
+Pass `candidates=[...]` to restrict or extend the list.
 
 ## Metrics
 
@@ -80,7 +107,7 @@ from bdopt.surrogate import Surrogate
 model = Surrogate.load("surrogate.pkl")
 ```
 
-A problem that contains lambdas cannot be pickled; in that case `save` leaves it out and you pass it back with
+A problem that contains local functions cannot be pickled; in that case `save` leaves it out and you pass it back with
 `Surrogate.load("surrogate.pkl", problem=problem)`.
 
 ## Writing your own

@@ -1,6 +1,6 @@
 # Installation
 
-bdopt needs **Python 3.10 or newer** and an **EnergyPlus installation** (8.7 or newer). Nothing else: it
+bdopt needs **Python 3.10 or newer** and an **EnergyPlus installation**. Nothing else: it
 runs on a laptop, a server or a container, and does not depend on Docker.
 
 ## The package
@@ -13,23 +13,22 @@ pip install "bdopt[torch,viz] @ git+https://github.com/lorenzobottaccioli/buidli
 
 | Extra | Adds |
 |---|---|
-| `torch` | {class}`~bdopt.surrogate.TorchMLP` (PyTorch; use the CPU build to avoid a multi-GB download) |
+| `torch` | the PyTorch surrogates: {class}`~bdopt.surrogate.TorchMLP`, {class}`~bdopt.surrogate.MCDropoutMLP`, {class}`~bdopt.surrogate.MultiTaskGPSurrogate`, {class}`~bdopt.surrogate.DeepKernelGPSurrogate` (use the CPU build to avoid a multi-GB download) |
 | `viz` | the plots in {mod}`bdopt.viz` (matplotlib) |
 | `yaml` | YAML study files (JSON works without it) |
-| `harlow` | the optional {class}`~bdopt.adaptive.HarlowAdaptiveSampler` bridge (pulls in TensorFlow) |
 | `docs` | building this documentation |
 | `dev` | tests and linting |
 
 ## EnergyPlus
 
-Any release from 8.7 works; install the one that matches your model (or let bdopt upgrade the model, see
+Install the release that matches your model (or let bdopt upgrade the model, see
 {doc}`guide/energyplus-versions`). Either use the official installer from
 [energyplus.net](https://energyplus.net/downloads), or the helper shipped with bdopt, which needs no
 administrator rights:
 
 ```bash
 python tools/install_eplus.py 9.6            # -> ~/.bdopt/eplus/EnergyPlus-9-6-0
-python tools/install_eplus.py 8.7 25.2       # several versions side by side
+python tools/install_eplus.py 9.6 25.2       # several versions side by side
 python tools/install_eplus.py --list         # known versions
 ```
 
@@ -49,7 +48,7 @@ bdopt eplus list --path /some/folder
 ```
 
 ```text
-8.7.0    /opt/eplus/EnergyPlus-8-7-0
+9.6.0    /opt/eplus/EnergyPlus-9-6-0
 9.6.0    /opt/eplus/EnergyPlus-9.6.0-f420c06a69-Linux-Ubuntu20.04-x86_64
 25.2.0   /opt/eplus/EnergyPlus-25.2.0-cf7368216c-Linux-Ubuntu24.04-x86_64
 ```

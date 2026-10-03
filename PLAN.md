@@ -1,6 +1,6 @@
 # bdopt – piano e stato
 
-Libreria Python indipendente per l'ottimizzazione del progetto di edifici con EnergyPlus (dalla 8.7 in poi):
+Libreria Python indipendente per l'ottimizzazione del progetto di edifici con EnergyPlus:
 studi parametrici, **adaptive sampling**, modelli surrogati (scikit-learn e PyTorch) e ottimizzazione
 multi-obiettivo. Nome `bdopt`, licenza MIT.
 
@@ -8,11 +8,11 @@ multi-obiettivo. Nome `bdopt`, licenza MIT.
 
 | Tema | Scelta |
 |---|---|
-| Versioni EnergyPlus | tutte dalla 8.7 (testate 8.7, 9.0, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2, 25.2) |
+| EnergyPlus | il cuore della libreria; versione del modello rilevata automaticamente (testate 9.6 e, in sessioni precedenti, altre dalla 8.7 alla 25.2) |
 | Machine learning | scikit-learn + PyTorch; nessun TensorFlow/Keras |
 | Ottimizzazione | solo pymoo (NSGA-II / NSGA-III), variabili miste |
 | Docker | non è una dipendenza; `docker/Dockerfile` è facoltativo |
-| Adaptive sampling | algoritmi propri (numpy/scipy); ponte facoltativo verso harlow |
+| Adaptive sampling | nove strategie in numpy/scipy (FLOLA-Voronoi, LOLA-Voronoi, CV-Voronoi, Voronoi, probabilistico, varianza GP, NIPV, LHS maximin, random) |
 
 ## Stato
 
@@ -20,16 +20,15 @@ multi-obiettivo. Nome `bdopt`, licenza MIT.
 |---|---|---|
 | 0 Setup | fatto | `pyproject.toml`, ruff, pytest, CI GitHub Actions (YAML validato, **non eseguito**), `tools/install_eplus.py` (testato su 8.7 `.sh` e 8.8 `.tar.gz`) |
 | 1 Layer EnergyPlus multi-versione | fatto | `bdopt/eplus/`: ricerca installazioni, versioni, parser IDD, alias, catena di transizioni; matrice di test in `tests/test_eplus_versions.py` |
-| 2 Sampling e adaptive | fatto | FLOLA/LOLA-Voronoi, Voronoi, varianza GP; ponte harlow testato |
-| 3 Surrogati e ottimizzazione | fatto | GP (ARD, incertezza), MLP sklearn, TorchMLP; NSGA-II/III con vincoli |
+| 2 Sampling e adaptive | fatto | nove strategie, vedi sopra |
+| 3 Surrogati e ottimizzazione | fatto | quindici surrogati (GP, multi-task GP, deep-kernel GP, foreste, boosting, SVR, kernel ridge, kNN, polinomiale, RBF, MLP sklearn/PyTorch, MC-dropout) e selezione automatica; NSGA-II/III con vincoli |
 | 4 Studio da configurazione e CLI | fatto | `DesignStudy`, `bdopt run study.yaml`, `bdopt eplus list` |
 | 5 Rilascio | parziale | README e docs scritti; **nessuna pubblicazione su PyPI**; il pacchetto si installa da git |
 
 ## Decisioni di progetto
 
-* **harlow non è il motore di default.** `harlow 0.1.0` importa TensorFlow/TensorFlow-Probability a livello di modulo
-  e oggi un `pip install harlow` produce un import rotto (serve `tf_keras`, non dichiarato). Gli algoritmi sono
-  riscritti in `bdopt.adaptive`; `HarlowAdaptiveSampler` è un ponte facoltativo che esegue harlow vero.
+* **Adaptive sampling senza dipendenze pesanti.** Gli algoritmi sono implementati in `bdopt.adaptive.designs` con numpy/scipy:
+  nessun TensorFlow, nessuna dipendenza da pacchetti esterni di campionamento.
 * **Lo schema SQL dei risultati è uguale in tutte le versioni 8.7–25.2** (verificato): un solo lettore. Cambiano
   invece nomi di campi, classi e meter (tabella in `aliases.py`, ricavata dal confronto reale degli IDD).
 * **Parser IDF/IDD propri**: nessun IDD globale per processo, quindi nessun conflitto tra versioni.

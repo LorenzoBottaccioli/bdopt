@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "eplus":
         installs = find_installations(args.path)
         if not installs:
-            print("no EnergyPlus installation found (>= 8.7). See tools/install_eplus.py", file=sys.stderr)
+            print("no EnergyPlus installation found. See tools/install_eplus.py", file=sys.stderr)
             return 1
         for e in installs:
             print(f"{e.version}\t{e.root}")

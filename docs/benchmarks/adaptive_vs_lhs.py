@@ -1,6 +1,6 @@
 """Adaptive sampling against a plain Latin hypercube on three analytic responses.
 
-Reproduces the table in docs/guide/adaptive-sampling.md (about 20 minutes on 4 cores).
+Reproduces the table in docs/guide/adaptive-sampling.md.
 
     python docs/benchmarks/adaptive_vs_lhs.py
 
@@ -10,21 +10,31 @@ points, divided by the standard deviation of the response.
 """
 
 import warnings
+
 warnings.filterwarnings("ignore")
 import numpy as np
+
 from bdopt import *
 from bdopt.adaptive import AdaptiveSampler
 from bdopt.surrogate import GPSurrogate
+
+METHODS=["flola_voronoi","lola_voronoi","cv_voronoi","nipv","probabilistic","gp_variance","latin_hypercube","random","lhs"]
 def gp(): return GPSurrogate(n_restarts=3, max_extra_restarts=8)
+def bump(r):    # narrow local feature on a smooth background
+    return [0.3*r["p0"]+np.exp(-(((r["p0"]-0.7)**2+(r["p1"]-0.3)**2)/0.012))]
+def step(r):    # sharp transition across a hyperplane-like surface
+    return [np.tanh(25*(r["p0"]+0.5*r["p1"]-0.9))+0.2*r["p2"]]
+def smooth(r):  # smooth baseline
+    return [np.sin(3*r["p0"])+r["p1"]**2+0.3*r["p2"]]
 def make(kind,d):
-    P=[Parameter(GenericSelector(lambda i,v:None,f"p{k}"),RangeParameter(0,1),name=f"p{k}") for k in range(d)]
+    P=[Parameter(NullSelector(f"p{k}"),RangeParameter(0,1),name=f"p{k}") for k in range(d)]
     pr=Problem(P,["f"])
     if kind=="bump":     # narrow local feature on a smooth background
-        f=lambda r:[0.3*r["p0"]+np.exp(-(((r["p0"]-0.7)**2+(r["p1"]-0.3)**2)/0.012))]
+        f=bump
     elif kind=="step":   # sharp transition across a hyperplane-like surface
-        f=lambda r:[np.tanh(25*(r["p0"]+0.5*r["p1"]-0.9))+0.2*r["p2"]]
+        f=step
     else:                # smooth baseline
-        f=lambda r:[np.sin(3*r["p0"])+r["p1"]**2+0.3*r["p2"]]
+        f=smooth
     return pr, FunctionEvaluator(pr,f)
 for kind in ["smooth","bump","step"]:
     pr,ev=make(kind,3)
@@ -32,7 +42,7 @@ for kind in ["smooth","bump","step"]:
     def err(train):
         p=gp().fit(train,pr).predict(big).to_numpy(); return float(np.sqrt(((p-truth)**2).mean()/truth.var()))
     res={}
-    for method in ["flola_voronoi","lola_voronoi","gp_variance","random","lhs"]:
+    for method in METHODS:
         es=[]
         for seed in range(4):
             if method=="lhs":

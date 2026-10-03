@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bdopt"
 version = "0.1.0"
-description = "Building design optimization with EnergyPlus (8.7+): parametric studies, adaptive sampling, surrogate models and multi-objective optimization."
+description = "Building design optimization with EnergyPlus: parametric studies, adaptive sampling, surrogate models and multi-objective optimization."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -29,7 +29,6 @@ dependencies = [
 torch = ["torch>=2.0"]
 viz = ["matplotlib>=3.6"]
 yaml = ["pyyaml>=6"]
-harlow = ["harlow"]  # note: harlow itself requires tensorflow; bdopt's native samplers do not
 all = ["bdopt[torch,viz,yaml]"]
 docs = ["sphinx>=7", "furo", "myst-nb", "sphinx-copybutton", "sphinx-design", "bdopt[viz]"]
 dev = ["pytest>=7", "pytest-cov", "ruff", "nbformat", "nbclient", "ipykernel", "bdopt[all]"]

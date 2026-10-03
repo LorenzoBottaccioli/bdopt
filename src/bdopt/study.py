@@ -36,8 +36,6 @@ from .problem import Problem
 from .sampling import lhs_unit
 from .simulation.runner import CommandRunner
 
-_SURROGATES = ("gp", "mlp", "torch_mlp")
-
 
 def load_config(source: dict | str | Path) -> tuple[dict, Path]:
     """``(config dict, base directory for relative paths)`` from a dict or a .json/.yaml file."""
@@ -90,23 +88,14 @@ def objective_from_config(spec: str | dict) -> str | Objective:
 
 
 def make_surrogate(spec: dict | str | None):
-    """Surrogate from the ``surrogate`` section of a configuration (``gp``, ``mlp`` or ``torch_mlp``)."""
-    from .surrogate import GPSurrogate, MLPSurrogate
+    """Surrogate from the ``surrogate`` section of a configuration (see :func:`bdopt.surrogate.make_surrogate`)."""
+    from .surrogate import make_surrogate as build
 
     if spec is None:
-        return GPSurrogate()
+        return build("gp")
     if isinstance(spec, str):
         spec = {"type": spec}
-    kind, params = spec.get("type", "gp"), spec.get("params", {})
-    if kind == "gp":
-        return GPSurrogate(**params)
-    if kind == "mlp":
-        return MLPSurrogate(**params)
-    if kind == "torch_mlp":
-        from .surrogate import TorchMLP
-
-        return TorchMLP(**params)
-    raise ValueError(f"surrogate type must be one of {_SURROGATES}")
+    return build(spec.get("type", "gp"), **spec.get("params", {}))
 
 
 @dataclass
@@ -216,17 +205,6 @@ class DesignStudy:
         seed = s.get("seed", 0)
         surrogate = make_surrogate(self.cfg.get("surrogate"))
         if method == "adaptive":
-            if s.get("engine", "native") == "harlow":
-                from .adaptive import HarlowAdaptiveSampler
-
-                sampler = HarlowAdaptiveSampler(
-                    self.problem, self.evaluator, s.get("adaptive_method", "FuzzyLolaVoronoi"),
-                    s.get("harlow_surrogate", "BatchIndependentGaussianProcess"), seed,
-                )
-                return sampler.run(
-                    s.get("n_initial"), s.get("n_test"), s.get("max_iter", 40), s.get("batch", 1),
-                    s.get("tol", 0.01), verbose=s.get("verbose", True),
-                )
             sampler = AdaptiveSampler(
                 self.problem, self.evaluator, s.get("adaptive_method", "flola_voronoi"), surrogate, seed
             )

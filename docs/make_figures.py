@@ -14,7 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from bdopt import FunctionEvaluator, GenericSelector, Parameter, Problem, RangeParameter, sampling, viz
+from bdopt import FunctionEvaluator, NullSelector, Parameter, Problem, RangeParameter, sampling, viz
 from bdopt.adaptive import AdaptiveSampler
 from bdopt.surrogate import GPSurrogate
 
@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore")
 
 def bump_problem():
     params = [
-        Parameter(GenericSelector(lambda i, v: None, n), RangeParameter(0, 1), name=n) for n in ("x1", "x2")
+        Parameter(NullSelector(n), RangeParameter(0, 1), name=n) for n in ("x1", "x2")
     ]
     problem = Problem(params, ["f"])
 

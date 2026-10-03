@@ -230,6 +230,24 @@ class GenericSelector:
         return f"GenericSelector({self.default_name!r})"
 
 
+class NullSelector:
+    """A selector that edits nothing: for design spaces evaluated by a Python function
+    (:class:`~bdopt.FunctionEvaluator`) instead of EnergyPlus."""
+
+    def __init__(self, name: str = "x"):
+        self.default_name = name
+
+    def validate(self, idf: IDF, idd: IDD) -> int:
+        """Always valid; returns 1."""
+        return 1
+
+    def apply(self, idf: IDF, value, idd: IDD) -> None:
+        """Does nothing."""
+
+    def __repr__(self) -> str:
+        return f"NullSelector({self.default_name!r})"
+
+
 class Parameter:
     """A design variable: ``Parameter(selector, value_descriptor, name)``.
 

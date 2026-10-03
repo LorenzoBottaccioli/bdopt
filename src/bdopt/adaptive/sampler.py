@@ -16,7 +16,17 @@ from ..sampling import lhs_unit
 from ..surrogate import GPSurrogate, Surrogate
 from . import designs
 
-METHODS = ("flola_voronoi", "lola_voronoi", "voronoi", "gp_variance", "random")
+METHODS = (
+    "flola_voronoi",
+    "lola_voronoi",
+    "cv_voronoi",
+    "voronoi",
+    "probabilistic",
+    "gp_variance",
+    "nipv",
+    "latin_hypercube",
+    "random",
+)
 
 
 @dataclass
@@ -25,7 +35,7 @@ class AdaptiveResult:
 
     ``data``/``test`` are tables of parameters + objectives in real units, ``history`` has one row per
     iteration (``scaled_rmse`` is the stopping metric: test RMSE in units of the std of each
-    objective over the initial samples, as in the harlow notebooks), ``surrogate`` is fitted on
+    objective over the initial samples, so that objectives of different size weigh the same), ``surrogate`` is fitted on
     ``data``.
     """
 
@@ -55,9 +65,12 @@ class AdaptiveSampler:
     problem, evaluator:
         the problem and what evaluates it (usually an :class:`~bdopt.EnergyPlusEvaluator`).
     method:
-        ``'flola_voronoi'`` (default; fuzzy hybrid LOLA-Voronoi), ``'lola_voronoi'`` (crisp
-        neighbourhoods), ``'voronoi'`` (pure exploration), ``'gp_variance'`` (largest predictive
-        uncertainty) or ``'random'`` (baseline).
+        one of :data:`METHODS`: ``'flola_voronoi'`` (default; fuzzy hybrid LOLA-Voronoi),
+        ``'lola_voronoi'``, ``'cv_voronoi'`` (cross-validation Voronoi), ``'voronoi'`` (pure
+        exploration), ``'probabilistic'`` (largest predictive standard deviation, found by differential
+        evolution), ``'gp_variance'`` (same on random candidates), ``'nipv'`` (negative integrated
+        posterior variance; needs a :class:`~bdopt.surrogate.GPSurrogate`), ``'latin_hypercube'``
+        (maximin space filling) or ``'random'`` (baseline). See :mod:`bdopt.adaptive.designs`.
     surrogate:
         model refitted at every iteration to measure convergence (default :class:`~bdopt.surrogate.GPSurrogate`).
     seed:
@@ -89,18 +102,21 @@ class AdaptiveSampler:
 
     def _propose(self, U, Y, batch: int, it: int, avoid, model: Surrogate) -> np.ndarray:
         rng = np.random.default_rng([self.seed, 1, it])
-        if self.method == "random":
-            out = []
-            taken = np.vstack([U, avoid]) if len(avoid) else U
-            for _ in range(batch):
-                cur = np.vstack([taken, *out]) if out else taken
-                out.append(designs._fallback_point(self.problem, rng, U.shape[1], cur))
-            return np.array(out)
-        if self.method == "gp_variance":
-            return designs.propose_gp_variance(U, Y, model, batch, rng, self.problem, avoid)
+        m, pr = self.method, self.problem
+        if m == "random":
+            return designs.propose_random(U, batch, rng, pr, avoid)
+        if m == "latin_hypercube":
+            return designs.propose_latin_hypercube(U, batch, rng, pr, avoid)
+        if m == "gp_variance":
+            return designs.propose_gp_variance(U, Y, model, batch, rng, pr, avoid)
+        if m == "probabilistic":
+            return designs.propose_probabilistic(U, Y, model, batch, rng, pr, avoid)
+        if m == "nipv":
+            return designs.propose_nipv(U, Y, model, batch, rng, pr, avoid)
+        if m == "cv_voronoi":
+            return designs.propose_cv_voronoi(U, self._scale(Y), model, batch, rng, pr, avoid)
         return designs.propose_voronoi_based(
-            U, self._scale(Y), batch, rng, self.problem, avoid,
-            exploit=self.method != "voronoi", fuzzy=self.method == "flola_voronoi",
+            U, self._scale(Y), batch, rng, pr, avoid, exploit=m != "voronoi", fuzzy=m == "flola_voronoi",
         )
 
     def _scale(self, Y: np.ndarray) -> np.ndarray:
@@ -182,7 +198,7 @@ class AdaptiveSampler:
 
         self._y_mean = Y.mean(axis=0)
         sd = Y.std(axis=0)
-        self._y_std = np.where(sd > 0, sd, 1.0)  # fixed from the initial samples, as in harlow
+        self._y_std = np.where(sd > 0, sd, 1.0)  # fixed from the initial samples
 
         model = self.surrogate.clone()
         rows: list[dict] = []

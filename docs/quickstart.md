@@ -7,13 +7,13 @@ An {class}`~bdopt.FunctionEvaluator` stands in for the simulator, so the whole f
 <!-- runnable -->
 ```python
 import numpy as np
-from bdopt import (FunctionEvaluator, GenericSelector, Parameter, Problem, RangeParameter)
+from bdopt import FunctionEvaluator, NullSelector, Parameter, Problem, RangeParameter
 from bdopt.adaptive import AdaptiveSampler
 from bdopt.surrogate import GPSurrogate
 from bdopt.optimize import nsga2
 
 # two parameters in [0, 1]; the selector is irrelevant here because no model file is edited
-params = [Parameter(GenericSelector(lambda idf, v: None), RangeParameter(0, 1), name=n) for n in ("x1", "x2")]
+params = [Parameter(NullSelector(n), RangeParameter(0, 1), name=n) for n in ("x1", "x2")]
 problem = Problem(params, ["cost", "heat_loss"])
 
 def simulator(row):                      # a stand-in for an EnergyPlus run

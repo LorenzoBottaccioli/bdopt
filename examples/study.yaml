@@ -44,8 +44,7 @@ runner:                      # optional: run EnergyPlus through a command prefix
 
 sampling:
   method: adaptive           # or lhs / sobol / random (then use n_samples)
-  adaptive_method: flola_voronoi   # lola_voronoi | voronoi | gp_variance | random
-  engine: native             # or harlow (needs the optional harlow install)
+  adaptive_method: flola_voronoi   # lola_voronoi | cv_voronoi | voronoi | probabilistic | gp_variance | nipv | latin_hypercube | random
   n_initial: 20
   n_test: 5                  # held-out simulations used to measure convergence (0: cross-validation)
   max_iter: 40
@@ -54,7 +53,7 @@ sampling:
   seed: 0
 
 surrogate:
-  type: gp                   # gp | mlp | torch_mlp
+  type: gp                   # gp | multitask_gp | deep_kernel_gp | random_forest | extra_trees | svr | kernel_ridge | polynomial | rbf | mlp | torch_mlp | auto ...
   # type: torch_mlp
   # params: {hidden: [32, 64, 32], n_ensemble: 3}
 

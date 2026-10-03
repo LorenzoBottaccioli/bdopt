@@ -116,7 +116,7 @@ class Surrogate(ABC):
 
     # -- persistence -----------------------------------------------------------------------------
     def save(self, path: str | Path) -> Path:
-        """Pickle the fitted model. If the problem cannot be pickled (e.g. it holds lambdas) it is left
+        """Pickle the fitted model. If the problem cannot be pickled (e.g. it holds a local function) it is left
         out and must be given to :meth:`load`."""
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)

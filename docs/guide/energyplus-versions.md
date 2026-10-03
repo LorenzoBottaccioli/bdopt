@@ -1,6 +1,6 @@
-# EnergyPlus versions (8.7 and newer)
+# EnergyPlus versions
 
-bdopt works with every EnergyPlus release from 8.7. Everything that depends on the version lives in
+bdopt runs your model with the EnergyPlus release it was written for, and older models can be upgraded (releases back to 8.7 are supported). Everything that depends on the version lives in
 `bdopt/eplus/`; this page says what is handled and how.
 
 | Aspect | How it is handled | Checked on |

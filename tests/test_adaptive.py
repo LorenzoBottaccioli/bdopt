@@ -3,8 +3,15 @@ import pandas as pd
 import pytest
 
 from bdopt import FunctionEvaluator, GenericSelector, Parameter, Problem, RangeParameter, sampling
-from bdopt.adaptive import AdaptiveSampler
-from bdopt.adaptive.designs import nonlinearity, voronoi_estimate
+from bdopt.adaptive import METHODS, AdaptiveSampler
+from bdopt.adaptive.designs import (
+    flola_nonlinearity,
+    fuzzy_weights,
+    lola_nonlinearity,
+    nonlinearity,
+    propose_nipv,
+    voronoi_estimate,
+)
 from bdopt.surrogate import GPSurrogate
 from conftest import analytic_problem, fast_gp
 
@@ -25,7 +32,34 @@ def test_nonlinearity_is_zero_for_linear_response():
     assert nonlinearity(X, Y2).max() > 0.1
 
 
-@pytest.mark.parametrize("method", ["flola_voronoi", "lola_voronoi", "voronoi", "gp_variance", "random"])
+@pytest.mark.parametrize("fn", [lola_nonlinearity, flola_nonlinearity])
+def test_exploitation_scores_zero_for_linear_and_large_at_a_kink(fn):
+    X = np.random.default_rng(3).random((40, 2))
+    Y = X @ np.array([[1.0], [-2.0]]) + 1
+    assert fn(X, Y).max() < 1e-6
+    kinked = Y + 3 * np.abs(X[:, :1] - 0.5)
+    score = fn(X, kinked)
+    near = np.abs(X[:, 0] - 0.5) < 0.1
+    assert score[near].mean() > 2 * score[~near].mean()
+
+
+def test_fuzzy_weights_rank_close_isolated_neighbours_highest():
+    cohesion = np.array([0.05, 0.05, 0.9, 0.9])      # close, close, far, far
+    adhesion = np.array([0.5, 0.01, 0.5, 0.01])      # isolated, clustered, isolated, clustered
+    w = fuzzy_weights(cohesion, adhesion)
+    assert w[0] > w[1] and w[0] > w[2] > w[3] and np.all(w > 0) and np.all(w <= 1)
+
+
+def test_nipv_prefers_the_unexplored_region():
+    pr, ev = analytic_problem(2)
+    X = np.random.default_rng(0).random((15, 2)) * 0.4   # every sample in the lower-left corner
+    Y = ev.evaluate_unit(X)
+    model = fast_gp().fit_unit(X, Y, pr)
+    new = propose_nipv(X, Y, model, 1, np.random.default_rng(1), pr)
+    assert new.max() > 0.5
+
+
+@pytest.mark.parametrize("method", METHODS)
 def test_methods_run_and_add_points(method):
     pr, ev = analytic_problem(3)
     r = AdaptiveSampler(pr, ev, method=method, surrogate=fast_gp(), seed=0).run(

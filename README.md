@@ -1,18 +1,19 @@
 # bdopt
 
-Building design optimization with **EnergyPlus 8.7 and newer**: parametric studies, **adaptive sampling**,
-surrogate models (scikit-learn and PyTorch) and multi-objective optimization (NSGA-II / NSGA-III).
-Built for the Smart Building Educational Platform, with adaptive sampling as a first-class feature.
+Building design optimization with **EnergyPlus**: parametric studies, **adaptive sampling**, a wide choice of
+surrogate models (Gaussian processes, tree ensembles, kernel methods, scikit-learn and PyTorch networks) and
+multi-objective optimization (NSGA-II / NSGA-III). Built for the Smart Building Educational Platform.
 
+* **EnergyPlus is the core.** bdopt edits the IDF, runs EnergyPlus in parallel (with an on-disk cache and
+  failure handling) and reads `eplusout.sql`. The installation matching the model is found automatically
+  and names that changed between releases are aliased (see [EnergyPlus versions](docs/guide/energyplus-versions.md)).
 * **Independent library.** `pip install` + any EnergyPlus install, on any OS. No Docker, no fixed paths
   (a Dockerfile is provided as a convenience, nothing depends on it).
-* **Every EnergyPlus version from 8.7** (tested on 8.7, 9.0, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2, 25.2): the installation matching
-  the model is found automatically; names that changed between versions are aliased; older models can be
-  upgraded with EnergyPlus' own transition tools.
-* **Adaptive sampling without TensorFlow.** `harlow` imports TensorFlow at module level; bdopt implements the
-  same family of algorithms (FLOLA-Voronoi, LOLA-Voronoi, Voronoi, GP variance) in numpy/scipy, and offers
-  an optional bridge if you do want harlow itself.
-* **PyTorch, not TensorFlow/Keras**, for neural surrogates.
+* **Nine adaptive sampling strategies** in numpy/scipy: fuzzy LOLA-Voronoi, LOLA-Voronoi, cross-validation
+  Voronoi, Voronoi, probabilistic (largest predictive deviation), GP variance, negative integrated posterior
+  variance, maximin Latin hypercube and random.
+* **Fifteen surrogate models**, from polynomials and RBF interpolation to multi-task and deep-kernel Gaussian
+  processes, plus automatic selection by cross-validation.
 * **Categorical parameters are first-class** (glazing type, construction sets ...), in sampling, surrogates
   and optimization.
 
@@ -48,7 +49,7 @@ bdopt eplus list                           # what bdopt can see
 ```
 
 `pip install bdopt` alone gives sampling, scikit-learn surrogates, adaptive sampling and NSGA-II; extras:
-`torch`, `viz` (matplotlib), `yaml`, `harlow`. Python >= 3.10.
+`torch`, `viz` (matplotlib), `yaml`. Python >= 3.10.
 EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH`, `ENERGYPLUS_DIR`,
 `EPLUS_PATH`, `PATH`, and the usual install folders (`/usr/local`, `/opt`, `/Applications`, `C:\`,
 `~/.bdopt/eplus`). `tools/install_eplus.py` installs into `~/.bdopt/eplus`, which is searched automatically.
@@ -61,9 +62,8 @@ EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH
 | `MeterReader`, `VariableReader`, `FunctionReader` | objectives (units, aggregation, direction min/max, custom post-processing of `eplusout.sql`) |
 | `EnergyPlusEvaluator` | parallel runs, on-disk cache (resume after a crash for free), failure handling (NaN + kept run directory), EnergyPlus warning/severe-error counts and an `on_severe` policy, `auto_upgrade` |
 | `bdopt.sampling` | `lhs`, `sobol`, `random`, `factorial` with constraints |
-| `bdopt.adaptive.AdaptiveSampler` | `flola_voronoi` (default), `lola_voronoi`, `voronoi`, `gp_variance`, `random`; stops on test error, iterations or simulation budget |
-| `bdopt.adaptive.HarlowAdaptiveSampler` | optional bridge to harlow's samplers (needs harlow + TensorFlow) |
-| `bdopt.surrogate` | `GPSurrogate` (ARD, uncertainty), `MLPSurrogate`, `TorchMLP` (optional ensemble), metrics, cross-validation |
+| `bdopt.adaptive.AdaptiveSampler` | `flola_voronoi` (default), `lola_voronoi`, `cv_voronoi`, `voronoi`, `probabilistic`, `gp_variance`, `nipv`, `latin_hypercube`, `random`; stops on test error, iterations or simulation budget |
+| `bdopt.surrogate` | `GPSurrogate`, `MultiTaskGPSurrogate`, `DeepKernelGPSurrogate`, `RandomForestSurrogate`, `ExtraTreesSurrogate`, `GradientBoostingSurrogate`, `SVRSurrogate`, `KernelRidgeSurrogate`, `KNNSurrogate`, `PolynomialSurrogate`, `RBFSurrogate`, `MLPSurrogate`, `TorchMLP`, `MCDropoutMLP`, `AutoSurrogate`; metrics, cross-validation |
 | `bdopt.optimize` | `nsga2`, `nsga3` (pymoo), mixed variables, constraints, `ParetoFront.closest_to_ideal()` |
 | `bdopt.DesignStudy`, `bdopt run study.yaml` | the whole pipeline from a YAML/JSON file (`examples/study.yaml`) |
 | `bdopt.viz` | pairplot, correlation heatmap, parallel coordinates, convergence, parity, Pareto (matplotlib) |
@@ -130,7 +130,7 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
 pip install -e ".[dev]"
 pytest -m "not eplus and not slow"                                   # no EnergyPlus needed
 BDOPT_EPLUS_PATH=/opt/eplus pytest -m eplus                          # every installed version
-BDOPT_TEST_EPLUS_VERSIONS=8.7,9.6 pytest -m eplus -k "not golden"   # chosen versions
+BDOPT_TEST_EPLUS_VERSIONS=9.6,24.2 pytest -m eplus -k "not golden"   # chosen versions
 python tools/idd_diff.py OLD_ROOT NEW_ROOT                           # what changed between two versions
 sphinx-build -W -b html docs docs/_build/html                        # the documentation
 ```

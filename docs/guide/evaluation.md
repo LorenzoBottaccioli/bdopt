@@ -119,8 +119,14 @@ test function or another simulator can be used wherever an evaluator is expected
 ```python
 from bdopt import FunctionEvaluator
 
-ev = FunctionEvaluator(problem, lambda row: [row["Wall"] ** 2, 1 - row["Wall"]])            # one row at a time
-ev = FunctionEvaluator(problem, lambda df: df[["Wall"]].to_numpy() * [1, 2], vectorized=True)  # whole table
+def one_row(row):                      # called once per design
+    return [row["Wall"] ** 2, 1 - row["Wall"]]
+
+def whole_table(df):                   # called once with every design (vectorized=True)
+    return df[["Wall"]].to_numpy() * [1, 2]
+
+ev = FunctionEvaluator(problem, one_row)
+ev = FunctionEvaluator(problem, whole_table, vectorized=True)
 ```
 
 Every evaluator also has {meth}`~bdopt.Evaluator.evaluate_unit`, which takes unit-cube points: that is what the

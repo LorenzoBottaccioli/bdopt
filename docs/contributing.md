@@ -22,7 +22,7 @@ pip install -e ".[dev,docs]"
 ```bash
 pytest -m "not eplus and not slow"                          # no EnergyPlus needed (a few minutes)
 BDOPT_EPLUS_PATH=/opt/eplus pytest -m eplus                 # every installed EnergyPlus version
-BDOPT_TEST_EPLUS_VERSIONS=8.7,9.6 pytest -m eplus -k "not reference"
+BDOPT_TEST_EPLUS_VERSIONS=9.6,24.2 pytest -m eplus -k "not reference"
 pytest -m slow                                              # model upgrades, benchmark-style checks
 ```
 
@@ -31,9 +31,7 @@ pytest -m slow                                              # model upgrades, be
 | `eplus` | needs an EnergyPlus installation; parametrised over the installed versions |
 | `slow` | takes minutes (model upgrade through many versions, adaptive-vs-LHS comparison) |
 
-`tests/test_harlow_bridge.py` is skipped unless harlow (and TensorFlow) are installed.
-
-Install several EnergyPlus versions side by side with `python tools/install_eplus.py 8.7 9.6 25.2`.
+Install several EnergyPlus versions side by side with `python tools/install_eplus.py 9.6 24.2 25.2`.
 
 ## Style
 

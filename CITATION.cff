@@ -6,7 +6,7 @@ version: 0.1.0
 license: MIT
 repository-code: "https://github.com/lorenzobottaccioli/buidlingdesginoptimization"
 abstract: >-
-  Python library for building design optimization with EnergyPlus 8.7 and newer: parametric studies,
+  Python library for building design optimization with EnergyPlus: parametric studies,
   adaptive sampling, surrogate models and multi-objective optimization.
 keywords:
   - EnergyPlus
