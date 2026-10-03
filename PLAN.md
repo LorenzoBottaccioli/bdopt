@@ -2,6 +2,15 @@
 
 Nome di lavoro: **`bdopt`** (Building Design Optimization). Il nome è provvisorio.
 
+## 0. Requisiti fissati
+
+| Requisito | Scelta |
+|---|---|
+| Versioni EnergyPlus | **tutte dalla 8.7 in poi** (8.7 → 25.x), con rilevamento automatico della versione |
+| Machine learning | **solo PyTorch** (+ scikit-learn); TensorFlow/Keras vengono eliminati |
+| Packaging | **libreria Python indipendente** (`pip install bdopt`), che gira su Linux/Windows/macOS con un'installazione locale di EnergyPlus. Le immagini Docker sono un artefatto **separato e opzionale** del repo, non una dipendenza |
+| Ottimizzatore | pymoo (variabili miste); adapter Platypus opzionale |
+
 ## 1. Perché
 
 Analisi di `Smart_Builing_Educational_Platform_Dockers` (notebook in `backend/notebook_templates`,
@@ -20,74 +29,107 @@ Analisi di `Smart_Builing_Educational_Platform_Dockers` (notebook in `backend/no
 | `EvaluatorGeneric(func, problem).df_apply(df)` | valuta il surrogato |
 
 Importato ma **non usato**: `NSGAII` di BESOS (i notebook usano Platypus direttamente), `GenericSelector`,
-`expand_plist`, `wwr`. Mai usato: PyEHub/EnergyHub, `EvaluatorEH`, rbfopt, editing della geometria, ecc.,
-che però si portano dietro dipendenze pesanti e vincoli di versione.
+`expand_plist`, `wwr`. Mai usato: PyEHub/EnergyHub, `EvaluatorEH`, rbfopt, editing della geometria, ecc.
 
 **Cosa manca in BESOS: il design optimization con adaptive sampling (harlow).** Oggi negli
 `Harlow_Example_*.ipynb` l'integrazione si fa a mano, ed è fragile:
 
-1. i bound del dominio vanno **ricopiati a mano** (`domain_lower_bound = [...]`), devono restare nello stesso ordine dei parametri BESOS e vanno scalati a mano;
+1. i bound del dominio vanno **ricopiati a mano** e scalati a mano, nello stesso ordine dei parametri BESOS;
 2. la `target_f` va scritta a mano: scala/de-scala, reshape, `DataFrame`, `df_apply`, di nuovo scala;
 3. **monkey-patch** di `surrogate_model.update` per forzare `y` 2D;
-4. le **variabili categoriche** si gestiscono con un `if glazing_value < 1.5 ...` scritto a mano nella `target_f`, più `replace(win, i+1)` sui DataFrame;
-5. il problema Platypus si ricostruisce a mano da `param.value_descriptor.min/max`, e si rompe con i categorici (`'CategoryParameter' object has no attribute 'min'` in Test 6);
-6. data leakage negli scaler (`scaler.fit_transform(test_in)` invece di `transform`), con due fasi di scaling diverse prima e dopo harlow;
-7. nessuna cache o persistenza strutturata delle run EnergyPlus (si usano `.pkl` salvati a mano).
-
-Obiettivo: una libreria **piccola**, che copra il 100% di quello che la piattaforma usa e renda
-l'adaptive sampling con harlow una sola chiamata.
+4. le **variabili categoriche** si gestiscono con un `if glazing_value < 1.5 ...` scritto a mano, più `replace(win, i+1)` sui DataFrame;
+5. il problema Platypus si ricostruisce a mano e si rompe con i categorici (`'CategoryParameter' object has no attribute 'min'` in Test 6);
+6. data leakage negli scaler (`scaler.fit_transform(test_in)` invece di `transform`);
+7. nessuna cache o persistenza strutturata delle run EnergyPlus (si usano `.pkl` salvati a mano);
+8. legato a una sola versione di EnergyPlus (9.6) e a TensorFlow (dipendenza pesante).
 
 ## 2. Principi
 
 - **Solo il necessario**: EnergyPlus + parametri + sampling (statico e adattivo) + surrogati + ottimizzazione multi-obiettivo.
+- **Indipendente dall'ambiente**: nessuna assunzione su Docker, path o OS. EnergyPlus si trova da sé (vedi §3.1) oppure si indica esplicitamente.
+- **Multi-versione EnergyPlus by design**: tutto ciò che dipende dalla versione (IDD, nomi di campi e meter, schema SQL, CLI) passa da un unico modulo `eplus/`.
 - **Spazio normalizzato unico**: ogni `Problem` sa codificare e decodificare i parametri in `[0,1]^d` (i categorici con indici arrotondati). Harlow, i surrogati e gli ottimizzatori lavorano tutti in questo spazio, così niente bound o scaler a mano.
-- **DataFrame in ingresso e in uscita**, con nomi di colonna = nomi dei parametri e degli obiettivi (come in BESOS, per non cambiare le abitudini didattiche).
+- **DataFrame in ingresso e in uscita**, con nomi di colonna = nomi dei parametri e degli obiettivi.
 - **Strato di compatibilità** `bdopt.compat.besos`: i notebook esistenti migrano cambiando solo gli import.
-- **Configurabile da JSON/YAML**, così il backend genera uno *study config* dalle scelte del frontend invece di iniettare codice nelle celle.
-- Python ≥ 3.10, dipendenze minime nel core; harlow, TF e la visualizzazione come extra opzionali.
+- **Configurabile da JSON/YAML** (`DesignStudy.from_config`), così il backend genera uno *study config* invece di iniettare codice.
+- Python ≥ 3.10. Core leggero (numpy, pandas, scipy, eppy, pymoo). Gli extra sono opzionali: `bdopt[harlow]`, `bdopt[torch]`, `bdopt[viz]`.
 
 ## 3. Architettura
 
 ```
 bdopt/
-  model.py          # load_idf(path, idd=env IDD_PATH), copy, save (eppy)
-  parameters.py     # FieldSelector, GenericSelector(callable), RangeParameter,
-                    # CategoryParameter, Parameter; encode/decode verso [0,1]
-  problem.py        # Problem(parameters, objectives, constraints?)
-                    #   .names(), .bounds(), .encode(df), .decode(X), .to_pymoo()
-  objectives.py     # MeterReader, VariableReader (da eplusout.sql), unità J->kWh,
-                    # aggregazioni (sum, max, mean), obiettivi custom (callable)
+  eplus/                # TUTTO ciò che dipende dalla versione di EnergyPlus
+    install.py          # trova le installazioni: arg esplicito > env ENERGYPLUS_DIR/EPLUS_PATH
+                        # > PATH > percorsi standard per OS (C:\EnergyPlusV*, /usr/local/EnergyPlus-*,
+                        # /Applications/EnergyPlus-*); legge la versione (`energyplus --version`/idd)
+    version.py          # Version("8.7.0"), parsing dall'oggetto `Version` dell'IDF, confronti
+    idd.py              # IDD dell'installazione corrispondente; gestione IDD globale di eppy
+    transition.py       # upgrade IDF -> versione del motore (IDFVersionUpdater/Transition-V*
+                        # inclusi in ogni installazione), opzionale e con cache
+    aliases.py          # tabella dei nomi che cambiano tra versioni (campi, classi, meter)
+    sql.py              # lettore eplusout.sql che si adatta allo schema della versione
+  model.py              # load_idf(path, eplus=...) -> Building (eppy), copia, salvataggio
+  parameters.py         # FieldSelector, GenericSelector(callable), RangeParameter,
+                        # CategoryParameter, Parameter; encode/decode verso [0,1]
+  problem.py            # Problem(parameters, objectives, constraints?)
+                        #   .names(), .bounds(), .encode(df), .decode(X), .to_pymoo()
+  objectives.py         # MeterReader, VariableReader, unità J->kWh, aggregazioni, callable custom
   simulation/
-    runner.py       # EnergyPlusRunner: subprocess, una cartella per run,
-                    # parallelismo (ProcessPool), timeout, gestione errori
-    cache.py        # cache su disco: hash(IDF + EPW + valori parametri) -> risultati
-  evaluator.py      # EnergyPlusEvaluator, FunctionEvaluator: .evaluate(df) -> df
-  sampling.py       # lhs, sobol, random, full factorial (scipy.stats.qmc)
+    runner.py           # Runner astratto
+                        #   LocalRunner (default): subprocess `energyplus -w -d -r ...`, una cartella
+                        #     per run, parallelismo (ProcessPool), timeout, gestione errori
+                        #   PyEnergyPlusRunner (opzionale, E+ >= 9.3): API Python in-process
+                        #   CommandRunner (opzionale): prefisso di comando configurabile, es.
+                        #     `docker exec energyplus ...`; così la piattaforma usa il suo container
+                        #     senza che la libreria dipenda da Docker
+    cache.py            # cache su disco: hash(IDF + EPW + versione E+ + parametri) -> risultati
+  evaluator.py          # EnergyPlusEvaluator, FunctionEvaluator: .evaluate(df) -> df
+  sampling.py           # lhs, sobol, random, full factorial (scipy.stats.qmc)
   adaptive/
-    harlow.py       # HarlowAdaptiveSampler: wrapper su FuzzyLolaVoronoi, LolaVoronoi,
-                    # ProbabilisticSampler, CVVoronoi... gestisce target_f, scaling,
-                    # categorici, shape 2D, stopping criteria, storico iterazioni
-    native.py       # fallback senza harlow (max-varianza GP) per test e robustezza
-  surrogate.py      # GP / MLP (sklearn Pipeline con scaler interno, niente leakage),
-                    # Keras opzionale; fit, CV, metriche (RMSE, RMSE%, CV(RMSE), R2)
-  optimize.py       # NSGA-II/NSGA-III su pymoo (variabili miste) sul surrogato o su EP;
-                    # pareto_df, selezione della soluzione (distanza dal punto ideale normalizzata)
-  study.py          # DesignStudy: pipeline end-to-end da config
-  viz.py            # pairplot, heatmap correlazioni, parallel coords, pareto 3D (extra)
-  compat/besos.py   # alias: FieldSelector, RangeParameter, EPProblem, EvaluatorEP,
-                    # EvaluatorGeneric, sampling.dist_sampler/lhs, eppy_funcs.get_building
+    harlow.py           # HarlowAdaptiveSampler: wrapper su FuzzyLolaVoronoi, LolaVoronoi,
+                        # ProbabilisticSampler, CVVoronoi... gestisce target_f, scaling,
+                        # categorici, shape 2D, stopping criteria, storico iterazioni
+    native.py           # fallback senza harlow (max-varianza GP) per test e robustezza
+  surrogate/
+    sklearn.py          # GP (selezione del kernel), MLP sklearn: Pipeline con scaler interno
+    torch.py            # MLP PyTorch (sostituisce il modello Keras dei notebook), early stopping,
+                        # salvataggio/caricamento; opzionale GP in GPyTorch
+    metrics.py          # RMSE, RMSE%, CV(RMSE), NMBE (ASHRAE G14), R2
+  optimize.py           # NSGA-II/NSGA-III su pymoo (variabili miste) sul surrogato o su EP;
+                        # pareto_df, selezione (distanza normalizzata dal punto ideale)
+  study.py              # DesignStudy: pipeline end-to-end da config
+  viz.py                # pairplot, heatmap correlazioni, parallel coords, pareto 3D (extra)
+  compat/besos.py       # alias: FieldSelector, RangeParameter, EPProblem, EvaluatorEP,
+                        # EvaluatorGeneric, sampling.dist_sampler/lhs, eppy_funcs.get_building
+docker/                 # OPZIONALE, fuori dal pacchetto Python
+  Dockerfile            # ARG EPLUS_VERSION -> immagini bdopt:eplus-8.7 ... bdopt:eplus-25.x
 ```
 
-### API obiettivo (quello che diventa un notebook)
+### 3.1 Supporto EnergyPlus 8.7+
+
+Cosa cambia tra le versioni e come lo gestiamo:
+
+| Aspetto | Gestione |
+|---|---|
+| **Dove sta E+ / quale versione** | `eplus.install.find()` restituisce tutte le installazioni trovate; `EnergyPlus(version="9.6")` oppure `EnergyPlus(path=...)`; di default sceglie quella che corrisponde alla versione dell'IDF |
+| **IDD** | sempre quello dell'installazione usata. eppy ha un IDD globale per processo: lo resettiamo in modo controllato (`IDF.resetidd`) e le run parallele in processi separati evitano conflitti |
+| **IDF di versione diversa dal motore** | errore chiaro, oppure `auto_upgrade=True` che usa i Transition dell'installazione (solo upgrade, non downgrade) |
+| **CLI** | `energyplus -w EPW -d OUT -r?` è stabile dalla 8.3, quindi copre tutte le versioni ≥ 8.7. Il `ExpandObjects` si attiva quando l'IDF contiene HVACTemplate |
+| **Output** | la libreria aggiunge `Output:SQLite` e i `Output:Meter`/`Output:Variable` necessari. Il lettore SQL si adatta allo schema: nelle versioni vecchie i meter stanno in tabelle separate (`ReportMeterData*`), in quelle recenti sono unificati in `ReportData*`. Fallback su ESO/CSV |
+| **Nomi rinominati** | tabella `aliases.py` con test. Esempi da verificare caso per caso: `DistrictHeating:Facility` → `DistrictHeatingWater:Facility` (23.1+), `Watts per Zone Floor Area` → `Watts per Floor Area` nelle versioni recenti. Un `FieldSelector`/`MeterReader` accetta il nome "vecchio" e lo risolve per la versione attiva, con un warning |
+| **Python API** | `PyEnergyPlusRunner` opzionale, solo per E+ ≥ 9.3; il default resta il subprocess, che funziona ovunque |
+
+### 3.2 API obiettivo (quello che diventa un notebook)
 
 ```python
-from bdopt import load_idf, FieldSelector, RangeParameter, CategoryParameter, Parameter, Problem
+from bdopt import EnergyPlus, load_idf, FieldSelector, RangeParameter, CategoryParameter, Parameter, Problem
 from bdopt.evaluator import EnergyPlusEvaluator
 from bdopt.adaptive import HarlowAdaptiveSampler
-from bdopt.surrogate import GPSurrogate
+from bdopt.surrogate import TorchMLP, GPSurrogate
 from bdopt.optimize import nsga2
 
-building = load_idf("Office_IDF.idf")
+ep = EnergyPlus()                                   # autodetect; oppure EnergyPlus(version="23.2")
+building = load_idf("Office_IDF.idf", eplus=ep)
 params = [
     Parameter(FieldSelector("Material", "_InsulationEX_.01", "Thickness"), RangeParameter(0.1, 0.5), name="Wall Insulation"),
     Parameter(FieldSelector("FenestrationSurface:Detailed", "*", "Construction Name"),
@@ -95,75 +137,74 @@ params = [
     ...
 ]
 problem = Problem(params, ["Electricity:Facility", "DistrictHeating:Facility", "DistrictCooling:Facility"])
-ev = EnergyPlusEvaluator(problem, building, epw="Larnaca.epw", out_dir="runs", processes=4, cache=True)
+ev = EnergyPlusEvaluator(problem, building, epw="Larnaca.epw", eplus=ep, out_dir="runs", processes=4, cache=True)
 
-sampler = HarlowAdaptiveSampler(problem, ev, method="FuzzyLolaVoronoi", surrogate="BatchIndependentGP")
+sampler = HarlowAdaptiveSampler(problem, ev, method="FuzzyLolaVoronoi")
 data = sampler.run(n_initial=20, n_test=5, max_iter=40, batch=1, tol=0.01)   # DataFrame in unità reali
 
-sur = GPSurrogate().fit(data, problem)            # scaling interno, report metriche
-pareto = nsga2(problem, sur, pop_size=200, n_gen=200)   # DataFrame parametri + obiettivi
+sur = TorchMLP(hidden=[32, 64, 32]).fit(data, problem)   # oppure GPSurrogate(); report metriche
+pareto = nsga2(problem, sur, pop_size=200, n_gen=200)    # DataFrame parametri + obiettivi
 best = pareto.closest_to_ideal()
 ```
-
-Oggi le celle tra la 20 e la 30 dei notebook Harlow fanno a mano scaling, bound, `target_f` e patch;
-con questa API diventano 2 righe.
 
 ## 4. Fasi e milestone
 
 **Fase 0 – Setup (1 settimana)**
-- struttura del repo (`pyproject.toml`, src layout, ruff, pytest, pre-commit), licenza, CI GitHub Actions
-- immagine Docker di test con EnergyPlus 9.6.0 (uguale a quella della piattaforma)
-- dataset di riferimento: IDF/EPW di Test 1..7 + risultati BESOS salvati (`.pkl`) come golden
+- struttura del repo (`pyproject.toml`, src layout, ruff, mypy, pytest, pre-commit), licenza
+- CI GitHub Actions: lint + unit test su Linux/Windows/macOS, Python 3.10–3.13 (senza E+)
+- script `tools/install_eplus.py` che scarica una versione specifica dalle release NREL (usato in CI e dagli utenti); cache degli installer in CI
+- dataset di riferimento: IDF/EPW di Test 1..7 + risultati BESOS salvati come golden (E+ 9.6)
+- verifica delle dipendenze di harlow: quali surrogati richiedono TF; si usano solo quelli torch/sklearn/gpytorch
 
-**Fase 1 – Core EnergyPlus (2 settimane)**
+**Fase 1 – Layer EnergyPlus multi-versione (2–3 settimane)**
+- `eplus/` completo: discovery, versioni, IDD, transition, aliases, lettore SQL che si adatta allo schema
 - `model`, `parameters` (selettori con `*`, categorici, GenericSelector), `problem` (encode/decode)
-- `EnergyPlusRunner` + lettura dei meter da SQLite, unità coerenti con BESOS (J)
-- `EnergyPlusEvaluator` con parallelismo, cache e gestione degli errori (la riga fallita va a NaN più un log, invece di interrompere il batch)
-- test: unit senza E+ (runner mockato) + integrazione con E+ 9.6
-- criterio di uscita: Test 1 LHS 60 campioni = risultati BESOS (tolleranza < 0.1%)
+- `LocalRunner` + `EnergyPlusEvaluator` con parallelismo, cache, gestione errori (riga fallita a NaN più log)
+- **matrice di integrazione E+**: 8.7, 8.9, 9.0, 9.3, 9.6, 22.2, 23.1, 24.2, ultima disponibile. Sulle PR girano 3 versioni (8.7, 9.6, ultima), la matrice completa ogni notte
+- criteri di uscita: Test 1 su 9.6 uguale a BESOS (tolleranza < 0.1%); stesso study eseguibile su tutte le versioni della matrice con risultati plausibili (regressione per versione salvata)
 
 **Fase 2 – Sampling e adaptive (2 settimane)**
 - `sampling` (LHS/Sobol in spazio normalizzato, decodifica corretta dei categorici)
-- `HarlowAdaptiveSampler`: costruzione automatica di bound, target function, fix della shape, storico, salvataggio incrementale (riprende dopo un crash)
-- verifica della compatibilità di versione con harlow (pin e test su più versioni) + fallback `native`
-- criterio di uscita: Harlow_Example_1 e _6 (categorici) riprodotti senza codice di colla
+- `HarlowAdaptiveSampler`: bound automatici, target function, fix della shape, storico, salvataggio incrementale (riprende dopo un crash), pin di versione di harlow + fallback `native`
+- criterio di uscita: Harlow_Example_1 e _6 (categorici) riprodotti senza codice di collegamento
 
-**Fase 3 – Surrogati e ottimizzazione (1–2 settimane)**
-- `surrogate` (GP con selezione del kernel, MLP, Keras opzionale) con split train/test corretto
-- `optimize` con pymoo (supporta variabili miste, quindi niente errore `.min` sui categorici); adapter Platypus opzionale
-- utilità per il fronte di Pareto e la selezione della soluzione
+**Fase 3 – Surrogati (torch) e ottimizzazione (2 settimane)**
+- `surrogate`: GP e MLP sklearn, MLP PyTorch (equivalente al modello Keras attuale), split train/test corretto, metriche
+- `optimize` con pymoo (variabili miste: niente errore `.min` sui categorici), utilità per il fronte di Pareto
 
-**Fase 4 – Integrazione nella piattaforma (1–2 settimane)**
-- `compat.besos` + migrazione di `Surrogate_template.ipynb` e degli esempi Test 1..7
-- `conda_environment.yml`: rimuovere `besos`, aggiungere `bdopt[harlow,viz]`
-- backend: `inject_data.py` scrive un `study.json` (IDF, EPW, parametri scelti dal frontend tramite `/get_surrogate_objects`) letto da `DesignStudy.from_config`, al posto di iniettare codice
-- documentazione didattica: notebook "BESOS vs adaptive" rifatti con la nuova API
+**Fase 4 – Docker (opzionale) e integrazione nella piattaforma (1–2 settimane)**
+- `docker/Dockerfile` parametrico su `EPLUS_VERSION`, immagini pubblicate su GHCR: è comodo, ma la libreria non ne ha bisogno
+- `compat.besos` + migrazione di `Surrogate_template.ipynb` e degli esempi Test 1..7 (Keras → `TorchMLP`)
+- `conda_environment.yml` della piattaforma: via `besos`, `tensorflow-probability[tf]`; dentro `bdopt[harlow,torch,viz]`; Python 3.9 → ≥ 3.10
+- backend: `inject_data.py` scrive uno `study.json` (IDF, EPW, versione E+, parametri scelti dal frontend tramite `/get_surrogate_objects`) letto da `DesignStudy.from_config`; `CommandRunner` se si vuole continuare a eseguire E+ nel container `energyplus`
 
-**Fase 5 – Rilascio**
-- docs (mkdocs), esempi, release 0.1 su PyPI/GitHub, changelog
+**Fase 5 – Rilascio (1 settimana)**
+- docs (mkdocs): installazione di E+, tabella di compatibilità delle versioni, guida alla migrazione da BESOS, esempi
+- release 0.1 su PyPI + immagini Docker opzionali
 
-Durata stimata totale: 7–9 settimane per una persona.
+Durata stimata totale: **9–11 settimane** per una persona (il supporto multi-versione aggiunge circa 2 settimane).
 
 ## 5. Test e qualità
 
-- unit test per encode/decode (proprietà: `decode(encode(x)) == x`, categorici inclusi)
-- integrazione E+ in CI (container 9.6) su un IDF piccolo, una run breve (RunPeriod di pochi giorni)
-- regressione numerica contro i golden BESOS di Test 1..7
-- test dell'adaptive sampling con funzioni analitiche (es. Branin), senza E+
+- unit test senza E+: encode/decode (proprietà `decode(encode(x)) == x`, categorici inclusi), aliases, parser della versione, lettore SQL su file `.sql` di fixture generati da ogni versione
+- integrazione E+ in CI sulla matrice di versioni, con un IDF piccolo e una run breve (RunPeriod di pochi giorni)
+- regressione numerica contro i golden BESOS (9.6) e golden propri per le altre versioni
+- adaptive sampling testato su funzioni analitiche (Branin, Hartmann) senza E+
+- test di installazione "pulita" (`pip install bdopt` in un venv, senza Docker) su tutti e 3 gli OS
 
 ## 6. Rischi
 
 | Rischio | Mitigazione |
 |---|---|
-| harlow poco manutenuto / API instabile | wrapper isolato in `adaptive/harlow.py`, versione pinnata, fallback `native` |
-| differenze numeriche vs BESOS (unità, aggregazioni) | golden test fase 1 |
-| supporto a versioni E+ ≠ 9.6 | IDD e binario configurabili; 9.6 unica versione supportata ufficialmente in 0.1 |
-| peso di TensorFlow nell'immagine | extra opzionale `bdopt[keras]` |
+| 8.7 è vecchia: binari solo per OS datati (es. Ubuntu 16.04/18.04 per Linux) | test 8.x nella CI Linux su un container dell'epoca, oppure librerie di compatibilità; documentare i limiti per OS |
+| differenze di schema/nome tra versioni non coperte | `aliases.py` + fixture SQL per ogni versione; errore esplicito con suggerimento invece di NaN silenziosi |
+| eppy con IDD globale | un IDD per processo, run in sottoprocessi; valutare un parser IDF interno se diventa un limite |
+| harlow poco manutenuto / dipendenze TF | wrapper isolato, versione pinnata, solo surrogati torch/sklearn, fallback `native` |
+| differenze numeriche vs BESOS | golden test fase 1 |
+| durata della matrice E+ in CI | matrice completa solo notturna, cache degli installer |
 
-## 7. Decisioni aperte
+## 7. Decisioni ancora aperte
 
 1. Nome definitivo della libreria e licenza (BESOS è MIT)
-2. Ottimizzatore: **pymoo** (consigliato: variabili miste, NSGA-III, manutenuto) oppure restare su Platypus
-3. Supporto EnergyPlus: solo 9.6 o anche 23.x/24.x (epJSON)
-4. Tenere Keras/TF nei notebook didattici o sostituirlo con sklearn/PyTorch-lite
-5. Parallelismo: solo processi locali o anche esecuzione nel container `energyplus` (`docker exec`, come fa oggi `backend/methods.py`)
+2. Platypus: tenerlo come adapter opzionale o eliminarlo del tutto a favore di pymoo
+3. Downgrade degli IDF (es. un IDF 23.x su un motore 9.6): non supportato, lo proponiamo così
