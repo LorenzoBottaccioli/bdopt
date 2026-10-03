@@ -28,12 +28,6 @@ def test_text_parsing_comments_and_missing_semicolon():
     assert idf.objects[2].fields == ["B1"]
 
 
-def test_eppy_style_access():
-    idf = IDF.from_file(MODELS / "lab_building.idf")
-    win = [w for w in idf.idfobjects["FenestrationSurface:Detailed"] if w.obj[2] == "Window"]
-    assert win and win[0].Name == win[0].fields[0]
-
-
 def test_add_and_remove():
     idf = IDF.from_text("Version,9.6;")
     o = idf.add("Output:SQLite", "SimpleAndTabular")

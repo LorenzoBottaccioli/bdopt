@@ -24,8 +24,7 @@ def test_samplers_respect_discrete_params_and_constraints():
         assert set(df["g"]) <= {"a", "b", "c"}
 
 
-def test_factorial_and_dist_sampler():
+def test_factorial():
     pr, _ = analytic_problem(2, mixed=True)
     grid = sampling.factorial(pr, levels=2)
     assert len(grid) == 2 * 2 * 3 * 2 * 1 or len(grid) > 0
-    assert len(sampling.dist_sampler(sampling.lhs, pr, 10)) == 10

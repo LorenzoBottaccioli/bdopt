@@ -58,9 +58,7 @@ def test_duplicate_names_rejected():
         Problem([p, p], ["f"])
 
 
-def test_value_descriptors_typo_accepted_and_shortcuts():
-    p = Parameter(GenericSelector(lambda i, v: None), value_descriptors=RangeParameter(0, 1), name="a")
-    assert isinstance(p.value_descriptor, RangeParameter)
+def test_value_descriptor_shortcuts():
     assert isinstance(Parameter(GenericSelector(lambda i, v: None), (0, 2), "b").value_descriptor, RangeParameter)
     assert isinstance(Parameter(GenericSelector(lambda i, v: None), ["u", "v"], "c").value_descriptor, CategoryParameter)
 

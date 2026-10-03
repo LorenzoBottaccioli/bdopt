@@ -104,8 +104,3 @@ def factorial(problem: Problem, levels: int | list[int] = 3) -> pd.DataFrame:
     grid = np.array(list(itertools.product(*axes)))
     df = problem.decode(grid)
     return df[problem.feasible(df)].reset_index(drop=True)
-
-
-def dist_sampler(sampler: Callable, problem: Problem, num_samples: int, **kwargs) -> pd.DataFrame:
-    """BESOS-style ``dist_sampler(lhs, problem, num_samples)``."""
-    return sampler(problem, num_samples, **kwargs)

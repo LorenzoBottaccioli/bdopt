@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bdopt"
 version = "0.1.0"
-description = "Building design optimization with EnergyPlus (8.7+): parametric studies, adaptive sampling, surrogate models and multi-objective optimization. A lightweight BESOS alternative."
+description = "Building design optimization with EnergyPlus (8.7+): parametric studies, adaptive sampling, surrogate models and multi-objective optimization."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

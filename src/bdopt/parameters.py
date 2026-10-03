@@ -203,12 +203,11 @@ class GenericSelector:
 class Parameter:
     """A design variable: ``Parameter(selector, value_descriptor, name)``.
 
-    ``value_descriptor`` may also be a ``(min, max)`` tuple or a list of options. The misspelt
-    keyword ``value_descriptors`` is accepted too, because it appears in existing BESOS notebooks.
+    ``value_descriptor`` may also be a ``(min, max)`` tuple (a range) or a list of options (a category).
     """
 
-    def __init__(self, selector, value_descriptor=None, name: str | None = None, *, value_descriptors=None):
-        vd = value_descriptor if value_descriptor is not None else value_descriptors
+    def __init__(self, selector, value_descriptor=None, name: str | None = None):
+        vd = value_descriptor
         if vd is None:
             raise ParameterError("a Parameter needs a value_descriptor")
         if isinstance(vd, tuple) and len(vd) == 2:

@@ -2,8 +2,7 @@
 
 Building design optimization with **EnergyPlus 8.7 and newer**: parametric studies, **adaptive sampling**,
 surrogate models (scikit-learn and PyTorch) and multi-objective optimization (NSGA-II / NSGA-III).
-A small alternative to [BESOS](https://github.com/building-energy/besos) for the workflow used in the Smart
-Building Educational Platform, with adaptive sampling built in.
+Built for the Smart Building Educational Platform, with adaptive sampling as a first-class feature.
 
 * **Independent library.** `pip install` + any EnergyPlus install, on any OS. No Docker, no fixed paths
   (a Dockerfile is provided as a convenience, nothing depends on it).
@@ -16,7 +15,6 @@ Building Educational Platform, with adaptive sampling built in.
 * **PyTorch, not TensorFlow/Keras**, for neural surrogates.
 * **Categorical parameters are first-class** (glazing type, construction sets ...), in sampling, surrogates
   and optimization.
-* Existing BESOS notebooks run through a compatibility layer.
 
 ```python
 from bdopt import *
@@ -69,20 +67,18 @@ EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH
 | `bdopt.optimize` | `nsga2`, `nsga3` (pymoo), mixed variables, constraints, `ParetoFront.closest_to_ideal()` |
 | `bdopt.DesignStudy`, `bdopt run study.yaml` | the whole pipeline from a YAML/JSON file (`examples/study.yaml`) |
 | `bdopt.viz` | pairplot, correlation heatmap, parallel coordinates, convergence, parity, Pareto (matplotlib) |
-| `bdopt.compat` | BESOS-compatible API: `bdopt.compat.use_as_besos()` |
 
-More: [docs/MIGRATION.md](docs/MIGRATION.md) (from BESOS), [docs/VERSIONS.md](docs/VERSIONS.md)
-(EnergyPlus versions), [docs/ADAPTIVE.md](docs/ADAPTIVE.md) (algorithms and when they help).
+More: [docs/VERSIONS.md](docs/VERSIONS.md) (EnergyPlus versions),
+[docs/ADAPTIVE.md](docs/ADAPTIVE.md) (algorithms and when they help).
 
 ## Measured
 
 All measured in the development environment (4 cores, EnergyPlus from the official releases).
 
-* **Same results as BESOS.** 4 design points of the platform's Test 1 model (Office, Larnaca, 6 parameters,
-  3 objectives, EnergyPlus 9.6): BESOS 2.2.3 and bdopt agree to a maximum relative difference of 4e-13
-  (floating-point noise). Regression test: `tests/test_eplus_versions.py::test_golden_matches_besos_...`.
-  In that run bdopt took 33 s and BESOS (`processes=4`) 15 min 25 s for the same four simulations; this is a
-  single measurement and I did not investigate where BESOS spends the time.
+* **Reproducible results.** 4 design points of an office model (Larnaca weather, 6 parameters, 3 objectives,
+  EnergyPlus 9.6) reproduce stored reference values to a maximum relative difference of 4e-13
+  (`tests/test_eplus_versions.py::test_reproduces_stored_reference_results`). A study that is interrupted and
+  re-run takes its finished simulations from the cache (4 cached results: 0.4 s instead of 33 s).
 * **One study, six EnergyPlus versions.** The same code (class, field and meter names written once) runs on
   8.7, 9.0, 9.6, 23.1, 24.2 and 25.2, including `HVACTemplate` models (`-x` expansion), and the cache,
   failure-handling and selector-error tests pass on each.

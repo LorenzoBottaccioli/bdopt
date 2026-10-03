@@ -52,10 +52,6 @@ class Evaluator:
         df = self.problem.decode(U)
         return self.evaluate(df)[self.problem.objective_names].to_numpy(dtype=float)
 
-    def df_apply(self, df: pd.DataFrame, keep_input: bool = False, **kwargs) -> pd.DataFrame:
-        """BESOS-compatible alias of :meth:`evaluate`."""
-        return self.evaluate(df, keep_input=keep_input, **kwargs)
-
     def __call__(self, row: Mapping | pd.Series | list) -> list[float]:
         if not isinstance(row, Mapping | pd.Series):
             row = dict(zip(self.problem.parameter_names, row, strict=True))
@@ -128,10 +124,7 @@ class EnergyPlusEvaluator(Evaluator):
         progress: bool = False,
         on_error: str = "nan",
         search_paths: list[str | Path] | None = None,
-        epw_file: str | Path | None = None,
-        progress_bar: bool | None = None,
     ):
-        epw = epw if epw is not None else epw_file
         self.problem = problem
         self.epw = Path(epw).resolve() if epw is not None else None
         if self.epw is not None and not self.epw.is_file():
@@ -142,7 +135,7 @@ class EnergyPlusEvaluator(Evaluator):
         self.err_dir = Path(err_dir).resolve() if err_dir else self.out_dir / "failed"
         self.processes = max(1, int(processes))
         self.keep_dirs, self.timeout, self.design_day = keep_dirs, timeout, design_day
-        self.progress = progress if progress_bar is None else progress_bar
+        self.progress = progress
         self.on_error = on_error
         self.out_dir.mkdir(parents=True, exist_ok=True)
 

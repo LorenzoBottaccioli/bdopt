@@ -57,7 +57,7 @@ class Problem:
         return [o.name for o in self.objectives]
 
     def names(self) -> list[str]:
-        """Parameter names followed by objective names (as ``EPProblem.names()`` in BESOS)."""
+        """Parameter names followed by objective names."""
         return self.parameter_names + self.objective_names
 
     @property

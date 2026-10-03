@@ -40,7 +40,7 @@ class MeterReader(Objective):
     """A meter (e.g. ``Electricity:Facility``) aggregated over the run period.
 
     ``aggregate`` is ``'sum'`` (energy, over all run periods), ``'max'`` or ``'mean'`` of the
-    run-period values. ``unit`` converts Joules to J/kJ/MJ/GJ/kWh/MWh (default: J, as BESOS).
+    run-period values. ``unit`` converts Joules to J/kJ/MJ/GJ/kWh/MWh (default: J).
     ``missing`` controls meters EnergyPlus does not report (no consumption, or a wrong name):
     ``'zero'`` (default, with a warning), ``'nan'`` or ``'error'``.
     """

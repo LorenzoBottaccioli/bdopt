@@ -30,16 +30,6 @@ class IDFObject:
     def name(self) -> str:
         return self.fields[0] if self.fields else ""
 
-    # eppy-style access, so code written for BESOS/eppy notebooks keeps working
-    @property
-    def obj(self) -> list[str]:
-        """``[class name, field, field, ...]`` (as eppy's ``obj``)."""
-        return [self.class_name, *self.fields]
-
-    @property
-    def Name(self) -> str:  # noqa: N802 - eppy spelling
-        return self.name
-
     def get(self, index: int, default: str = "") -> str:
         return self.fields[index] if index < len(self.fields) else default
 
@@ -134,11 +124,6 @@ class IDF:
                     return None
         return None
 
-    @property
-    def idfobjects(self) -> _ObjectsByClass:
-        """eppy-style ``idf.idfobjects["Lights"]`` (case-insensitive)."""
-        return _ObjectsByClass(self)
-
     def by_class(self, class_name: str) -> list[IDFObject]:
         key = class_name.lower()
         return [o for o in self.objects if o.class_name.lower() == key]
@@ -180,20 +165,6 @@ class IDF:
 
     def __repr__(self) -> str:
         return f"IDF({len(self.objects)} objects, version={self.version})"
-
-
-class _ObjectsByClass:
-    def __init__(self, idf: IDF):
-        self._idf = idf
-
-    def __getitem__(self, class_name: str) -> list[IDFObject]:
-        return self._idf.by_class(class_name)
-
-    def __contains__(self, class_name: str) -> bool:
-        return bool(self._idf.by_class(class_name))
-
-    def keys(self):
-        return self._idf.classes()
 
 
 _SAFE = re.compile(r"[^A-Za-z0-9_.\-]+")

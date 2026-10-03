@@ -170,14 +170,14 @@ def test_command_runner_with_prefix(tmp_path):
 
 
 @pytest.mark.slow
-def test_golden_matches_besos_on_real_platform_model(tmp_path):
-    """4 design points of the platform's Test 1 (Office, Larnaca): BESOS 2.2.3 results, stored in
-    tests/data, reproduced to floating-point precision (max relative difference measured: 4e-13)."""
+def test_reproduces_stored_reference_results(tmp_path):
+    """4 design points of an office model (Larnaca weather, 6 parameters, 3 objectives, EnergyPlus 9.6): the
+    objectives reproduce the stored reference values to floating-point precision (measured: 4e-13)."""
     ep = next((e for e in installs() if e.version.matches("9.6")), None)
     if ep is None:
         pytest.skip("EnergyPlus 9.6 not installed")
-    rows = pd.read_json(DATA / "golden_besos_test1_rows.json")
-    ref = pd.read_json(DATA / "golden_besos_test1_out.json").sort_index()
+    rows = pd.read_json(DATA / "reference_office_rows.json")
+    ref = pd.read_json(DATA / "reference_office_out.json").sort_index()
     sel = lambda c, o, f: FieldSelector(c, o, f)  # noqa: E731
     P = [
         Parameter(sel("Material", "_InsulationEX_.01", "Thickness"), RangeParameter(.1, .5), name="Wall Insulation"),
