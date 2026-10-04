@@ -88,6 +88,7 @@ concepts
 guide/index
 tutorials/index
 api/index
+benchmarks
 faq
 contributing
 changelog
