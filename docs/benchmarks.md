@@ -17,8 +17,10 @@ differences of tests 3 to 6 were not investigated.
 Per test: 15 initial Latin-hypercube simulations + 5 held-out test simulations, then 20 adaptive simulations
 (35 training points); a plain Latin hypercube with 35 points for comparison; 25 independent Latin-hypercube
 simulations to judge every model. Error `nrmse` = RMSE divided by the range of the objective, averaged over the 3
-objectives, of a Gaussian process (adaptive part) or of the named surrogate (surrogate part). One seed per test:
-differences below about 0.005 are noise.
+objectives, of a Gaussian process (adaptive part) or of the named surrogate (surrogate part). One seed per test (seed 0, budget 35):
+differences below about 0.005 are noise. All nine strategies are in the table below. More seeds and a 60-point
+budget are implemented in the script (`--seeds`, `--budgets`) but were not completed; the rows that exist are in
+`platform_adaptive_full.csv`.
 
 ## Adaptive strategies
 
@@ -26,9 +28,12 @@ differences below about 0.005 are noise.
 |---|---|---|---|---|---|---|---|---|
 | plain_lhs | 0.032 | 0.015 | 0.016 | 0.029 | 0.008 | 0.027 | 0.014 | 0.020 |
 | nipv | 0.032 | 0.018 | 0.015 | 0.026 | 0.007 | 0.035 | 0.016 | 0.021 |
+| voronoi | 0.036 | 0.020 | 0.012 | 0.024 | 0.007 | 0.033 | 0.019 | 0.021 |
 | latin_hypercube | 0.030 | 0.019 | 0.015 | 0.026 | 0.008 | 0.033 | 0.024 | 0.022 |
 | flola_voronoi | 0.039 | 0.021 | 0.012 | 0.022 | 0.007 | 0.038 | 0.017 | 0.022 |
 | cv_voronoi | 0.037 | 0.019 | 0.015 | 0.020 | 0.009 | 0.044 | 0.015 | 0.023 |
+| gp_variance | 0.037 | 0.024 | 0.016 | 0.026 | 0.008 | 0.040 | 0.018 | 0.024 |
+| random | 0.035 | 0.026 | 0.016 | 0.030 | 0.009 | 0.031 | 0.019 | 0.024 |
 | lola_voronoi | 0.040 | 0.019 | 0.019 | 0.033 | 0.008 | 0.057 | 0.017 | 0.027 |
 | probabilistic | 0.056 | 0.025 | 0.019 | 0.063 | 0.012 | 0.057 | 0.024 | 0.036 |
 
