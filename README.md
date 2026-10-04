@@ -90,23 +90,55 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
   EnergyPlus 9.6) reproduce stored reference values to a maximum relative difference of 4e-13
   (`tests/test_eplus_versions.py::test_reproduces_stored_reference_results`). A study that is interrupted and
   re-run takes its finished simulations from the cache (4 cached results: 0.4 s instead of 33 s).
-* **One study, six EnergyPlus versions.** The same code (class, field and meter names written once) runs on
-  8.7, 9.0, 9.6, 22.1, 22.2, 23.1, 23.2, 24.1, 24.2 and 25.2, including `HVACTemplate` models (`-x` expansion), and the cache,
-  failure-handling and selector-error tests pass on each.
-* **Adaptive vs plain Latin hypercube, same number of training points** (50, Gaussian-process surrogate,
-  4 random seeds, normalised RMSE on 3000 independent points; analytic functions, 3 parameters):
+* **The seven platform tests.** `examples/platform_tests.py` expresses the platform's seven surrogate-modelling
+  tests (offices, two flats, a multi-floor residence, a laboratory with a categorical glazing type) in bdopt.
+  Re-simulating the platform's stored test points with EnergyPlus 9.6 gives a maximum relative difference to
+  its BESOS results of 7.7e-8, 2.4e-8, 1.6e-4, 4.7e-5, 9.3e-5, 3.5e-4 and 2.8e-7 for tests 1 to 7 (I did not
+  investigate the 1e-4 differences of the residential and laboratory models).
+* **Strategies and surrogates on the seven tests**, real EnergyPlus runs (`docs/benchmarks/platform_benchmark.py`,
+  raw results in `docs/benchmarks/platform_*.csv`). Per test: 15 initial + 5 test simulations, then 20 adaptive
+  ones (35 training points); the plain Latin hypercube has 35 points; error = RMSE / range averaged over the
+  three objectives (`nrmse`) of a Gaussian process on 25 independent Latin-hypercube simulations; one seed
+  per test.
 
-  | response | FLOLA-Voronoi | LOLA-Voronoi | GP variance | random | LHS |
-  |---|---|---|---|---|---|
-  | smooth | 0.001 | 0.002 | 0.001 | 0.002 | 0.002 |
-  | narrow local bump | **0.154** ± 0.036 | 0.166 ± 0.028 | 0.342 | 0.353 | 0.243 ± 0.029 |
-  | step across an oblique surface | 0.224 | 0.186 | 0.197 | 0.257 | 0.203 |
+  Adaptive strategies (same Gaussian process):
 
-  Adaptive sampling is clearly better only when the response has a **localised** feature (37 % lower error
-  than LHS here). For smooth responses every design is equally good, and for the oblique step it did not help.
-  If your responses are smooth (I would expect that for insulation, lighting or ventilation parameters, but I
-  have not measured it on the platform's models), the practical value of the adaptive loop is the convergence
-  monitoring and the automatic stopping, not a more accurate model for the same budget.
+  |  | test 1 | test 2 | test 3 | test 4 | test 5 | test 6 | test 7 | mean |
+  |---|---|---|---|---|---|---|---|---|
+  | plain_lhs | 0.032 | 0.015 | 0.016 | 0.029 | 0.008 | 0.027 | 0.014 | 0.020 |
+  | nipv | 0.032 | 0.018 | 0.015 | 0.026 | 0.007 | 0.035 | 0.016 | 0.021 |
+  | latin_hypercube | 0.030 | 0.019 | 0.015 | 0.026 | 0.008 | 0.033 | 0.024 | 0.022 |
+  | flola_voronoi | 0.039 | 0.021 | 0.012 | 0.022 | 0.007 | 0.038 | 0.017 | 0.022 |
+  | cv_voronoi | 0.037 | 0.019 | 0.015 | 0.020 | 0.009 | 0.044 | 0.015 | 0.023 |
+  | lola_voronoi | 0.040 | 0.019 | 0.019 | 0.033 | 0.008 | 0.057 | 0.017 | 0.027 |
+  | probabilistic | 0.056 | 0.025 | 0.019 | 0.063 | 0.012 | 0.057 | 0.024 | 0.036 |
+
+  **On these models no adaptive strategy beat the plain Latin hypercube** (mean 0.020 against 0.021 to 0.036);
+  `nipv`, `flola_voronoi`, `cv_voronoi` and `latin_hypercube` are within the noise of one seed per test, and
+  `probabilistic` is clearly worse. This agrees with the analytic study below: the platform's responses are
+  smooth, so adaptivity has nothing to find. Surrogates trained on the 35-point Latin hypercube:
+
+  |  | test 1 | test 2 | test 3 | test 4 | test 5 | test 6 | test 7 | mean |
+  |---|---|---|---|---|---|---|---|---|
+  | auto | 0.032 | 0.015 | 0.016 | 0.029 | 0.008 | 0.027 | 0.014 | 0.020 |
+  | gp | 0.032 | 0.015 | 0.016 | 0.029 | 0.008 | 0.027 | 0.014 | 0.020 |
+  | multitask_gp | 0.035 | 0.027 | 0.048 | 0.050 | 0.031 | 0.062 | 0.019 | 0.039 |
+  | mc_dropout_mlp | 0.042 | 0.040 | 0.037 | 0.044 | 0.038 | 0.059 | 0.023 | 0.041 |
+  | deep_kernel_gp | 0.047 | 0.036 | 0.044 | 0.037 | 0.038 | 0.079 | 0.025 | 0.044 |
+  | rbf | 0.044 | 0.046 | 0.053 | 0.059 | 0.032 | 0.065 | 0.027 | 0.046 |
+  | kernel_ridge | 0.048 | 0.059 | 0.051 | 0.052 | 0.040 | 0.054 | 0.032 | 0.048 |
+  | svr | 0.041 | 0.061 | 0.058 | 0.059 | 0.035 | 0.063 | 0.041 | 0.051 |
+  | mlp | 0.046 | 0.049 | 0.057 | 0.062 | 0.041 | 0.080 | 0.033 | 0.053 |
+  | gradient_boosting | 0.064 | 0.067 | 0.055 | 0.055 | 0.034 | 0.080 | 0.050 | 0.058 |
+  | torch_mlp | 0.048 | 0.069 | 0.058 | 0.067 | 0.063 | 0.097 | 0.033 | 0.062 |
+  | polynomial | 0.053 | 0.075 | 0.083 | 0.077 | 0.061 | 0.083 | 0.048 | 0.068 |
+  | extra_trees | 0.078 | 0.085 | 0.103 | 0.101 | 0.091 | 0.115 | 0.060 | 0.090 |
+  | random_forest | 0.088 | 0.099 | 0.119 | 0.116 | 0.112 | 0.132 | 0.071 | 0.105 |
+  | knn | 0.133 | 0.133 | 0.135 | 0.156 | 0.150 | 0.158 | 0.107 | 0.139 |
+
+  The Gaussian process is the best model on every test; `auto` selects it every time. Trees and k-NN are the
+  least accurate with this few points. Neural networks need more data than 35 points.
+* **Adaptive vs plain Latin hypercube, analytic responses**: ANALYTIC_TABLE
 * **Upgrading a model.** The platform's Office model (EnergyPlus 9.6) upgraded to 25.2 (8 transition steps)
   and simulated; the upgrade took about 230 s once (cached afterwards), and the three objectives differ from
   the 9.6 results by -2.3 %, +4.9 %, -5.8 %. I did not isolate how much of that is the engine and how much the
@@ -118,10 +150,11 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
   and tests ran on Linux only. The Dockerfiles were not built (no Docker daemon available).
 * Results are read from `eplusout.sql` at run-period level (meters and variables, aggregated with sum/max/mean)
   or through your own `FunctionReader`. Geometry edits are not provided: use a `GenericSelector` with your
-  own function.
-* `lola_voronoi` uses nearest-neighbour neighbourhoods rather than the cross-polytope selection of the paper, and
-  the fuzzy weighting of `flola_voronoi` is a smooth closed form of the paper's fuzzy inference system, so
-  neither is numerically identical to harlow's. The harlow bridge runs harlow's own code.
+  own setter function.
+* `lola_voronoi` restricts the neighbourhood search to the nearest samples (the paper enumerates every subset), and
+  the fuzzy membership functions of `flola_voronoi` are my reading of the paper (see the adaptive sampling
+  guide), so neither is guaranteed numerically identical to other implementations.
+* The platform benchmark uses one seed per test and 35 training points; differences below about 0.005 are noise.
 * A model must match the engine version, or be upgraded (`auto_upgrade=True`); downgrading is not possible.
 
 ## Development
