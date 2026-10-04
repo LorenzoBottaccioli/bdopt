@@ -17,6 +17,8 @@ dropped with a warning; at least three points are needed.
 
 ## Which model?
 
+How each model works, step by step: {doc}`surrogate-models`.
+
 All of them are built from a short name too: `make_surrogate("random_forest")`, `make_surrogate("rbf")`, ...
 (also the `surrogate: {type: ...}` entry of a study file).
 

@@ -10,7 +10,9 @@ objectives
 evaluation
 sampling
 adaptive-sampling
+adaptive-algorithms
 surrogates
+surrogate-models
 optimization
 studies
 energyplus-versions

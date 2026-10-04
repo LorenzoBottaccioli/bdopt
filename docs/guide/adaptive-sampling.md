@@ -61,6 +61,8 @@ objective over the initial samples (fixed from the start), averaged over objecti
 
 ### Methods
 
+Each method is explained step by step in {doc}`adaptive-algorithms`; this table is the summary.
+
 `AdaptiveSampler(method=...)` takes one of the names in `bdopt.adaptive.METHODS`. All of them are implemented in
 numpy/scipy in `bdopt.adaptive.designs`.
 
