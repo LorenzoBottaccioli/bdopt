@@ -138,7 +138,21 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
 
   The Gaussian process is the best model on every test; `auto` selects it every time. Trees and k-NN are the
   least accurate with this few points. Neural networks need more data than 35 points.
-* **Adaptive vs plain Latin hypercube, analytic responses**: ANALYTIC_TABLE
+* **Adaptive strategies vs plain Latin hypercube, analytic responses** (`docs/benchmarks/adaptive_vs_lhs.py`):
+
+  Same Gaussian process, 3 seeds, 50 training points, error = RMSE / standard deviation of the response on 3000
+  independent points (± over seeds):
+
+  | response | FLOLA | LOLA | CV-Voronoi | NIPV | probabilistic | GP variance | maximin LHS | random | plain LHS |
+  |---|---|---|---|---|---|---|---|---|---|
+  | smooth | 0.001 | 0.001 | 0.001 | 0.002 | 0.001 | 0.001 | 0.001 | 0.002 | 0.002 |
+  | narrow bump | **0.134** ± 0.021 | 0.151 ± 0.042 | 0.151 ± 0.045 | 0.318 ± 0.041 | 0.701 ± 0.454 | 0.380 ± 0.075 | 0.525 ± 0.317 | 0.378 ± 0.110 | 0.228 ± 0.012 |
+  | oblique step | 0.240 ± 0.023 | 0.224 ± 0.013 | 0.212 ± 0.019 | **0.184** ± 0.012 | 0.194 ± 0.020 | 0.204 ± 0.006 | 0.256 ± 0.036 | 0.244 ± 0.038 | 0.207 ± 0.033 |
+
+  The three Voronoi/LOLA strategies are clearly better than a Latin hypercube only on the **localised** feature
+  (FLOLA 41 % lower error); NIPV and the variance-based methods help a little on the step, within the spread
+  between seeds; on the smooth response nothing matters. Methods that chase uncertainty alone
+  (`probabilistic`, `gp_variance`) can be much worse than a plain design (they pile samples on the boundary).
 * **Upgrading a model.** The platform's Office model (EnergyPlus 9.6) upgraded to 25.2 (8 transition steps)
   and simulated; the upgrade took about 230 s once (cached afterwards), and the three objectives differ from
   the 9.6 results by -2.3 %, +4.9 %, -5.8 %. I did not isolate how much of that is the engine and how much the

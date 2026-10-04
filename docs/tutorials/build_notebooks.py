@@ -409,7 +409,7 @@ test = test.join(evaluator.evaluate(test))'''),
     md('''## Sampling strategies
 
 `bdopt.adaptive.METHODS` lists them. Every method starts from the same 12 Latin-hypercube simulations plus 6
-held-out ones and adds 28 more, one at a time; the surrogate is the same Gaussian process. The error is the RMSE
+held-out ones and adds 20 more, one at a time; the surrogate is the same Gaussian process. The error is the RMSE
 on the 2000 independent points divided by the standard deviation of each objective, averaged over objectives.'''),
     code('''from bdopt.adaptive import METHODS, AdaptiveSampler
 from bdopt.surrogate import GPSurrogate
@@ -421,20 +421,20 @@ def error(model):
 rows = []
 for method in METHODS:
     errors = []
-    for seed in range(3):
-        sampler = AdaptiveSampler(problem, evaluator, method, GPSurrogate(n_restarts=3, max_extra_restarts=8), seed=seed)
-        result = sampler.run(n_initial=12, n_test=6, max_iter=28, tol=0, verbose=False)
+    for seed in range(2):
+        sampler = AdaptiveSampler(problem, evaluator, method, GPSurrogate(n_restarts=2, max_extra_restarts=6), seed=seed)
+        result = sampler.run(n_initial=12, n_test=6, max_iter=20, tol=0, verbose=False)
         errors.append(error(result.surrogate))
     rows.append((method, np.mean(errors), np.std(errors)))
 
 plain = []
-for seed in range(3):
-    train = sampling.lhs(problem, 40, seed=seed)
+for seed in range(2):
+    train = sampling.lhs(problem, 32, seed=seed)
     train = train.join(evaluator.evaluate(train))
-    plain.append(error(GPSurrogate(n_restarts=3, max_extra_restarts=8).fit(train, problem)))
-rows.append(("plain Latin hypercube (40)", np.mean(plain), np.std(plain)))
+    plain.append(error(GPSurrogate(n_restarts=2, max_extra_restarts=6).fit(train, problem)))
+rows.append(("plain Latin hypercube (32)", np.mean(plain), np.std(plain)))
 pd.DataFrame(rows, columns=["method", "mean error", "std over seeds"]).set_index("method").sort_values("mean error")'''),
-    md('''With three seeds the differences between neighbours are inside the spread: read the table as "which methods
+    md('''With two seeds the differences between neighbours are inside the spread: read the table as "which methods
 are clearly worse", not as a ranking. `docs/benchmarks/platform_benchmark.py` does this on EnergyPlus models.
 
 ## Surrogate models

@@ -102,27 +102,40 @@ displacement.
 
 ## When does it help?
 
-It depends on the shape of the response. Measured on analytic functions of three parameters (4 seeds, 50
-training points, Gaussian-process surrogate; error = RMSE on 3000 independent points divided by the standard
-deviation of the response; `±` is the standard deviation over seeds):
+It depends on the shape of the response.
 
-| Response | FLOLA-Voronoi | LOLA-Voronoi | GP variance | random | Latin hypercube |
-|---|---|---|---|---|---|
-| smooth | 0.001 | 0.002 | 0.001 | 0.002 | 0.002 |
-| narrow local bump | **0.154** ± 0.036 | 0.166 ± 0.028 | 0.342 ± 0.092 | 0.353 ± 0.104 | 0.243 ± 0.029 |
-| step across an oblique surface | 0.224 ± 0.020 | 0.186 ± 0.027 | 0.197 ± 0.012 | 0.257 ± 0.040 | 0.203 ± 0.030 |
+**Analytic responses** (three parameters, 3 seeds, 50 training points, Gaussian-process surrogate; error = RMSE on
+3000 independent points divided by the standard deviation of the response; `±` over seeds):
 
-* **Localised nonlinearity** (a narrow bump): FLOLA-Voronoi has 37 % lower error than a Latin hypercube of the
-  same size, and about half the error of random or variance-based sampling.
-* **Smooth responses:** every design is equally good; there is nothing to gain from adaptivity.
-* **An oblique step:** no gain over the Latin hypercube (the differences are within the spread between seeds).
+| response | FLOLA | LOLA | CV-Voronoi | NIPV | probabilistic | GP variance | maximin LHS | random | plain LHS |
+|---|---|---|---|---|---|---|---|---|---|
+| smooth | 0.001 | 0.001 | 0.001 | 0.002 | 0.001 | 0.001 | 0.001 | 0.002 | 0.002 |
+| narrow bump | **0.134** ± 0.021 | 0.151 ± 0.042 | 0.151 ± 0.045 | 0.318 ± 0.041 | 0.701 ± 0.454 | 0.380 ± 0.075 | 0.525 ± 0.317 | 0.378 ± 0.110 | 0.228 ± 0.012 |
+| oblique step | 0.240 ± 0.023 | 0.224 ± 0.013 | 0.212 ± 0.019 | **0.184** ± 0.012 | 0.194 ± 0.020 | 0.204 ± 0.006 | 0.256 ± 0.036 | 0.244 ± 0.038 | 0.207 ± 0.033 |
 
-So expect the adaptive loop to help when something happens in a small region of the design space (a threshold, a
-switch, a resonance). For smooth responses, which I would expect for insulation, lighting or ventilation
-parameters but have not measured on real models, its main value is the **convergence monitoring and automatic
-stopping**: you learn how many simulations were enough instead of guessing.
+* **Localised nonlinearity** (a narrow bump): FLOLA, LOLA and CV-Voronoi cut the error of a Latin hypercube by 34 to
+  41 %. Uncertainty-only criteria (`probabilistic`, `gp_variance`) and `nipv` are worse than a plain design.
+* **Smooth responses:** every design is equally good.
+* **An oblique step:** differences are within the spread between seeds.
 
-The benchmark is `docs/benchmarks/adaptive_vs_lhs.py`.
+**The platform's seven tests** (real EnergyPlus, 35 training points, one seed per test, error on 25 independent
+simulations; `docs/benchmarks/platform_benchmark.py`):
+
+| strategy | mean nrmse over the 7 tests |
+|---|---|
+| plain Latin hypercube | 0.020 |
+| `nipv` | 0.021 |
+| `latin_hypercube` (maximin) | 0.022 |
+| `flola_voronoi` | 0.022 |
+| `cv_voronoi` | 0.023 |
+| `lola_voronoi` | 0.027 |
+| `probabilistic` | 0.036 |
+
+No adaptive strategy beat the plain Latin hypercube on these models: their responses to insulation, lighting,
+ventilation and shading set points are smooth, and a Gaussian process with 35 points already reaches 1 to 3 %
+error. So expect the adaptive loop to help when something happens in a small region of the design space (a
+threshold, a switch, a resonance). For smooth building responses its main value is the **convergence monitoring
+and automatic stopping**: you learn how many simulations were enough instead of guessing.
 
 ## Why a Gaussian process with restarts
 

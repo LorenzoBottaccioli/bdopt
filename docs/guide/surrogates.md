@@ -38,6 +38,11 @@ All of them are built from a short name too: `make_surrogate("random_forest")`, 
 | `mc_dropout_mlp` | {class}`~bdopt.surrogate.MCDropoutMLP` | network with a predictive standard deviation from dropout (an approximate Bayesian network) | PyTorch |
 | `auto` | {class}`~bdopt.surrogate.AutoSurrogate` | cross-validates a list of candidates and keeps the best | `selected_` and `cv_scores_` tell what it chose |
 
+On the platform's seven tests (35 training simulations, error on 25 independent simulations, mean nrmse) the
+Gaussian process was best on every test (0.020), then the multi-task GP (0.039), the MC-dropout network (0.041), the
+deep-kernel GP (0.044), RBF interpolation (0.046), kernel ridge (0.048), SVR, MLP, gradient boosting, PyTorch MLP,
+polynomial, extra trees, random forest and k-NN (0.139); `auto` picked the GP every time. Full table in the README.
+
 For a few dozen to a few hundred simulations start with the Gaussian process, or let `auto` decide. Compare models
 on the same held-out simulations rather than by intuition; {doc}`../tutorials/02_office_building` and the
 measurements on the platform tests (see the README) do exactly that.
