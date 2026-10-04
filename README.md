@@ -70,6 +70,8 @@ EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH
 
 ## Documentation
 
+Benchmark results (all tables, protocol, how to reproduce): [docs/benchmarks.md](docs/benchmarks.md).
+
 The documentation is a Sphinx site in `docs/` (build it with `pip install -e ".[docs]"` then
 `sphinx-build -W -b html docs docs/_build/html`):
 
