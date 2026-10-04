@@ -70,7 +70,7 @@ class AdaptiveSampler:
         exploration), ``'probabilistic'`` (largest predictive standard deviation, found by differential
         evolution), ``'gp_variance'`` (same on random candidates), ``'nipv'`` (negative integrated
         posterior variance; needs a :class:`~bdopt.surrogate.GPSurrogate`), ``'latin_hypercube'``
-        (maximin space filling) or ``'random'`` (baseline). See :mod:`bdopt.adaptive.designs`.
+        (maximin space filling) or ``'random'`` (baseline). See ``bdopt.adaptive.designs``.
     surrogate:
         model refitted at every iteration to measure convergence (default :class:`~bdopt.surrogate.GPSurrogate`).
     seed:
