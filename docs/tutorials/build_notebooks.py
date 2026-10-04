@@ -49,12 +49,12 @@ We will
     md('''## The problem
 
 A {class}`~bdopt.Parameter` couples *where* a value goes in the model (a selector) with *which values* are
-allowed. Here there is no model file, so the selector does nothing (`GenericSelector`), and a
+allowed. Here there is no model file, so the selector does nothing (`NullSelector`), and a
 {class}`~bdopt.FunctionEvaluator` computes the response.'''),
-    code('''from bdopt import FunctionEvaluator, GenericSelector, Parameter, Problem, RangeParameter
+    code('''from bdopt import FunctionEvaluator, NullSelector, Parameter, Problem, RangeParameter
 
 params = [
-    Parameter(GenericSelector(lambda idf, value: None), RangeParameter(0, 1), name=name)
+    Parameter(NullSelector(name), RangeParameter(0, 1), name=name)
     for name in ("x1", "x2")
 ]
 problem = Problem(params, ["f"])
@@ -135,7 +135,7 @@ plt.show()'''),
   Latin hypercube is as good, and the adaptive loop is then mainly a way to *know* when you have simulated
   enough. The measured comparison is in {doc}`../guide/adaptive-sampling`.
 * In a real study replace the `FunctionEvaluator` with an {class}`~bdopt.EnergyPlusEvaluator` and the
-  `GenericSelector` with `FieldSelector` objects: tutorial 2 does that.'''),
+  `NullSelector` with `FieldSelector` objects: tutorial 2 does that.'''),
 ]
 
 # ----------------------------------------------------------------------------------------------------
@@ -295,10 +295,10 @@ The toy problem: choose a wall insulation thickness, a glazing type and a number
 heat loss and cost and maximise daylight, with a cost cap.'''),
     code(SETUP),
     md('''## Parameters of three kinds'''),
-    code('''from bdopt import (CategoryParameter, FunctionEvaluator, GenericSelector, IntegerParameter, Objective,
+    code('''from bdopt import (CategoryParameter, FunctionEvaluator, IntegerParameter, NullSelector, Objective,
                    Parameter, Problem, RangeParameter)
 
-noop = GenericSelector(lambda idf, value: None)        # no model file in this tutorial
+noop = NullSelector()                                  # no model file in this tutorial
 
 parameters = [
     Parameter(noop, RangeParameter(0.05, 0.40), name="insulation [m]"),
@@ -321,10 +321,10 @@ objectives = [
     "cost",
     Objective("daylight", direction="max"),            # an objective to maximise
 ]
-problem = Problem(
-    parameters, objectives,
-    constraints=[lambda row: GLAZING[row["glazing"]][2] + 400 * row["insulation [m]"] - 190.0],   # cost cap
-)
+def cost_cap(row):
+    return GLAZING[row["glazing"]][2] + 400 * row["insulation [m]"] - 190.0     # feasible when <= 0
+
+problem = Problem(parameters, objectives, constraints=[cost_cap])
 evaluator = FunctionEvaluator(problem, simulator)
 problem.names()'''),
     md('''A plain string is an objective to minimise (with an EnergyPlus evaluator it would be a meter name);
@@ -384,8 +384,92 @@ pd.Series(np.sqrt((error ** 2).mean(axis=0)), index=problem.objective_names, nam
 * Whole pipeline from a file: {doc}`../guide/studies`.'''),
 ]
 
+# ----------------------------------------------------------------------------------------------------
+NB04 = [
+    md('''# 4. Choosing a sampling strategy and a surrogate
+
+bdopt has nine adaptive sampling strategies and fifteen surrogate models. This tutorial compares them on a
+cheap analytic response (no EnergyPlus), so you can see how to run such a comparison on your own model: the
+only thing that changes is the evaluator. The response has a narrow bump on a smooth trend and a mild
+oscillation in the third parameter.'''),
+    code(SETUP),
+    code('''from bdopt import FunctionEvaluator, NullSelector, Parameter, Problem, RangeParameter, sampling
+
+params = [Parameter(NullSelector(n), RangeParameter(0, 1), name=n) for n in ("x1", "x2", "x3")]
+problem = Problem(params, ["f1", "f2"])
+
+def simulator(row):
+    bump = np.exp(-(((row["x1"] - 0.7) ** 2 + (row["x2"] - 0.3) ** 2) / 0.02))
+    return [0.3 * row["x1"] + bump + 0.1 * np.sin(6 * row["x3"]), row["x2"] ** 2 + 0.5 * row["x3"] + 0.4 * bump]
+
+evaluator = FunctionEvaluator(problem, simulator)
+
+test = sampling.lhs(problem, 2000, seed=99)               # independent points to judge every model
+test = test.join(evaluator.evaluate(test))'''),
+    md('''## Sampling strategies
+
+`bdopt.adaptive.METHODS` lists them. Every method starts from the same 12 Latin-hypercube simulations plus 6
+held-out ones and adds 20 more, one at a time; the surrogate is the same Gaussian process. The error is the RMSE
+on the 2000 independent points divided by the standard deviation of each objective, averaged over objectives.'''),
+    code('''from bdopt.adaptive import METHODS, AdaptiveSampler
+from bdopt.surrogate import GPSurrogate
+
+def error(model):
+    s = model.score(test)
+    return float((s["rmse"] / test[problem.objective_names].std()).mean())
+
+rows = []
+for method in METHODS:
+    errors = []
+    for seed in range(2):
+        sampler = AdaptiveSampler(problem, evaluator, method, GPSurrogate(n_restarts=2, max_extra_restarts=6), seed=seed)
+        result = sampler.run(n_initial=12, n_test=6, max_iter=20, tol=0, verbose=False)
+        errors.append(error(result.surrogate))
+    rows.append((method, np.mean(errors), np.std(errors)))
+
+plain = []
+for seed in range(2):
+    train = sampling.lhs(problem, 32, seed=seed)
+    train = train.join(evaluator.evaluate(train))
+    plain.append(error(GPSurrogate(n_restarts=2, max_extra_restarts=6).fit(train, problem)))
+rows.append(("plain Latin hypercube (32)", np.mean(plain), np.std(plain)))
+pd.DataFrame(rows, columns=["method", "mean error", "std over seeds"]).set_index("method").sort_values("mean error")'''),
+    md('''With two seeds the differences between neighbours are inside the spread: read the table as "which methods
+are clearly worse", not as a ranking. `docs/benchmarks/platform_benchmark.py` does this on EnergyPlus models.
+
+## Surrogate models
+
+Same 40 Latin-hypercube simulations for every model, error on the independent points.'''),
+    code('''import time
+from bdopt.surrogate import SURROGATES, make_surrogate
+
+names = list(SURROGATES) + ["torch_mlp", "mc_dropout_mlp", "multitask_gp", "deep_kernel_gp"]
+train = sampling.lhs(problem, 40, seed=0)
+train = train.join(evaluator.evaluate(train))
+rows = []
+for name in names:
+    t0 = time.time()
+    model = make_surrogate(name).fit(train, problem)
+    rows.append((name, error(model), model.has_uncertainty, time.time() - t0))
+pd.DataFrame(rows, columns=["surrogate", "error", "uncertainty", "fit seconds"]).set_index("surrogate").sort_values("error")'''),
+    md('''## Letting bdopt choose
+
+{class}`~bdopt.surrogate.AutoSurrogate` cross-validates a list of candidates on the training data only and keeps
+the best.'''),
+    code('''from bdopt.surrogate import AutoSurrogate
+
+auto = AutoSurrogate(cv=5).fit(train, problem)
+print("selected:", auto.selected_, "  error on the independent points:", round(error(auto), 4))
+auto.cv_scores_'''),
+    md('''## Next
+
+* How each strategy works: {doc}`../guide/adaptive-sampling`; each model: {doc}`../guide/surrogates`.
+* On EnergyPlus models: {doc}`02_office_building`.'''),
+]
+
 BOOKS = {"01": ("01_adaptive_sampling_basics.ipynb", NB01), "02": ("02_office_building.ipynb", NB02),
-         "03": ("03_mixed_variables_and_constraints.ipynb", NB03)}
+         "03": ("03_mixed_variables_and_constraints.ipynb", NB03),
+         "04": ("04_strategies_and_surrogates.ipynb", NB04)}
 
 
 def build(key: str) -> None:

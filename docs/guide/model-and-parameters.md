@@ -35,7 +35,10 @@ FieldSelector("Lights", "*", "Watts per Zone Floor Area")
 # only some objects: `where` is {field name: required value} or a function of the object
 FieldSelector("FenestrationSurface:Detailed", "*", "Construction Name",
               where={"Surface Type": "Window"})
-FieldSelector("Zone", "*", "Multiplier", where=lambda obj: obj.name.startswith("Office"))
+def is_office(obj):
+    return obj.name.startswith("Office")
+
+FieldSelector("Zone", "*", "Multiplier", where=is_office)
 ```
 
 Class names, object names, field names and `where` values are compared **case-insensitively**. Class and field
@@ -100,10 +103,13 @@ window with a distinct `name`; the dimension of the problem grows accordingly.
 ```python
 from bdopt import Problem
 
+def wall_cap(row):
+    return row["Wall insulation"] - 0.45     # g(x) <= 0 is feasible
+
 problem = Problem(
     parameters=[wall, glazing],
     objectives=["Electricity:Facility", "DistrictHeating:Facility"],
-    constraints=[lambda row: row["Wall insulation"] - 0.45],     # g(x) <= 0 is feasible
+    constraints=[wall_cap],
 )
 problem.names()               # parameter names followed by objective names
 problem.decode(unit_points)   # unit cube -> table of real values

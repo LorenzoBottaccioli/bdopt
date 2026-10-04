@@ -26,6 +26,13 @@ the selected design with a real simulation.
 No EnergyPlus needed. Categorical and integer parameters, a constraint, an objective to maximise, choosing a
 design from the Pareto front.
 :::
+
+:::{grid-item-card} 4. Choosing a strategy and a surrogate
+:link: 04_strategies_and_surrogates
+:link-type: doc
+No EnergyPlus needed. All nine adaptive sampling strategies and all the surrogate models compared on the same
+response, and automatic model selection.
+:::
 ::::
 
 ```{toctree}
@@ -34,4 +41,5 @@ design from the Pareto front.
 01_adaptive_sampling_basics
 02_office_building
 03_mixed_variables_and_constraints
+04_strategies_and_surrogates
 ```

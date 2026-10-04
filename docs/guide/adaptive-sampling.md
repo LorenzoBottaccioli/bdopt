@@ -56,22 +56,39 @@ Each iteration:
 3. propose `batch` new designs with the chosen method, simulate them, add them to the training set.
 
 **Stopping metric.** `scaled_rmse` is the RMSE on the test points in units of the standard deviation of each
-objective over the initial samples (fixed from the start, as harlow does), averaged over objectives. With
+objective over the initial samples (fixed from the start), averaged over objectives. With
 `n_test=0` the same quantity is computed from 5-fold cross-validation on the training data instead.
 
 ### Methods
 
-| `method` | How the next point is chosen |
-|---|---|
-| `flola_voronoi` (default) | Hybrid of *exploration* and *exploitation* (Crombecq et al. 2011; van der Herten et al. 2015). Exploration: a Monte-Carlo estimate of the volume of each sample's Voronoi cell (a big cell is a poorly covered region). Exploitation: how far the response around each sample is from a locally fitted linear model, with neighbours weighted by closeness and isolation. The sample with the highest *volume + nonlinearity* score gets a new neighbour at the farthest point of its cell. |
-| `lola_voronoi` | Same score with equal weights on the nearest neighbours. |
-| `voronoi` | Exploration only: fills the largest gaps (tends towards the corners of the cube). |
-| `gp_variance` | The candidate with the largest predictive standard deviation of the surrogate (needs a surrogate with uncertainty: {class}`~bdopt.surrogate.GPSurrogate` or an ensemble {class}`~bdopt.surrogate.TorchMLP`). |
-| `random` | Uniform random, as a baseline. |
+Each method is explained step by step in {doc}`adaptive-algorithms`; this table is the summary.
 
-The Voronoi/FLOLA scores are implemented here in numpy; the fuzzy inference system of the paper is replaced by an
-equivalent smooth weighting, and `lola_voronoi` uses nearest-neighbour neighbourhoods instead of the
-cross-polytope selection of the paper. They are not numerically identical to harlow's (see below).
+`AdaptiveSampler(method=...)` takes one of the names in `bdopt.adaptive.METHODS`. All of them are implemented in
+numpy/scipy in `bdopt.adaptive.designs`.
+
+| `method` | How the next point is chosen | Needs |
+|---|---|---|
+| `flola_voronoi` (default) | **Fuzzy LOLA-Voronoi** (Crombecq et al. 2011; van der Herten et al. 2015). Exploration: a Monte-Carlo estimate of the volume of each sample's Voronoi cell (a big cell is a poorly covered region). Exploitation: how far the response around each sample is from a locally fitted hyperplane. The neighbourhood of a sample is every sample closer than $\alpha = \frac{2}{K}\sum$ (the $K = 4d$ nearest distances); each neighbour is weighted by a Mamdani fuzzy inference system fed with its *cohesion* (distance to the sample) and *adhesion* (distance to its own nearest sample), see {func}`~bdopt.adaptive.designs.fuzzy_weights`. The sample with the highest *volume + nonlinearity* score gets a new neighbour at the farthest point of its cell. | |
+| `lola_voronoi` | **LOLA-Voronoi**: same hybrid score, with crisp neighbourhoods. For every sample the best set of $2d$ neighbours is chosen by the cross-polytope criterion (cohesion and adhesion of the set, Crombecq et al. Eq. 4.3 to 4.7). The paper enumerates every subset, which is $\binom{n}{2d}$ (about $10^{12}$ for 60 samples in 6 dimensions); here the search is restricted to the nearest samples, as many as keep it below 3000 subsets. | |
+| `cv_voronoi` | **Cross-validation Voronoi** (Xu et al. 2014; Liu et al. 2016; Kaminsky et al. 2021). A 5-fold cross-validation leaves every sample out once; the cell of the sample the surrogate predicts worst is refined at its farthest point. Objectives are combined with weights proportional to their cross-validated NRMSE. | refits the surrogate 5 times per iteration |
+| `voronoi` | Exploration only: fills the largest gaps (tends towards the corners of the cube). | |
+| `probabilistic` | The point of largest predictive standard deviation, searched over the whole cube by differential evolution (Chai 2019). | surrogate with uncertainty |
+| `gp_variance` | The same criterion on 4000 random candidates (cheap). | surrogate with uncertainty |
+| `nipv` | **Negative integrated posterior variance**: the candidate that lowers the *average* predictive variance over the domain the most. For a Gaussian process this is a closed form, $\overline{\mathrm{cov}(m, c)^2 / (\mathrm{var}(c) + \sigma^2_n)}$ over Monte-Carlo points $m$, and a batch is built by adding the fantasised point and repeating. | {class}`~bdopt.surrogate.GPSurrogate` |
+| `latin_hypercube` | Maximin-augmented Latin hypercube: each batch is the best of 50 random Latin hypercubes by distance to the points already taken. Non-adaptive, space filling. | |
+| `random` | Uniform random, as a baseline. | |
+
+Surrogates with uncertainty: {class}`~bdopt.surrogate.GPSurrogate`, {class}`~bdopt.surrogate.MultiTaskGPSurrogate`,
+{class}`~bdopt.surrogate.DeepKernelGPSurrogate`, {class}`~bdopt.surrogate.RandomForestSurrogate`,
+{class}`~bdopt.surrogate.ExtraTreesSurrogate`, {class}`~bdopt.surrogate.MCDropoutMLP`, an ensemble
+{class}`~bdopt.surrogate.TorchMLP`.
+
+Departures from the papers, so that nobody has to guess: the fuzzy membership functions act on normalised
+distances (close = sigmoid of the cohesion distance, isolated and clustered = Gaussians of the adhesion
+distance) and the rules are *close and isolated = high weight*, *close and clustered = average*, *far and isolated
+= average*, *far and clustered = low*; the response of several objectives is handled by summing the
+non-linearity of the standardised objectives; the non-linearity uses the proper dot product of gradient and
+displacement.
 
 ### Behaviour worth knowing
 
@@ -87,27 +104,40 @@ cross-polytope selection of the paper. They are not numerically identical to har
 
 ## When does it help?
 
-It depends on the shape of the response. Measured on analytic functions of three parameters (4 seeds, 50
-training points, Gaussian-process surrogate; error = RMSE on 3000 independent points divided by the standard
-deviation of the response; `±` is the standard deviation over seeds):
+It depends on the shape of the response.
 
-| Response | FLOLA-Voronoi | LOLA-Voronoi | GP variance | random | Latin hypercube |
-|---|---|---|---|---|---|
-| smooth | 0.001 | 0.002 | 0.001 | 0.002 | 0.002 |
-| narrow local bump | **0.154** ± 0.036 | 0.166 ± 0.028 | 0.342 ± 0.092 | 0.353 ± 0.104 | 0.243 ± 0.029 |
-| step across an oblique surface | 0.224 ± 0.020 | 0.186 ± 0.027 | 0.197 ± 0.012 | 0.257 ± 0.040 | 0.203 ± 0.030 |
+**Analytic responses** (three parameters, 3 seeds, 50 training points, Gaussian-process surrogate; error = RMSE on
+3000 independent points divided by the standard deviation of the response; `±` over seeds):
 
-* **Localised nonlinearity** (a narrow bump): FLOLA-Voronoi has 37 % lower error than a Latin hypercube of the
-  same size, and about half the error of random or variance-based sampling.
-* **Smooth responses:** every design is equally good; there is nothing to gain from adaptivity.
-* **An oblique step:** no gain over the Latin hypercube (the differences are within the spread between seeds).
+| response | FLOLA | LOLA | CV-Voronoi | NIPV | probabilistic | GP variance | maximin LHS | random | plain LHS |
+|---|---|---|---|---|---|---|---|---|---|
+| smooth | 0.001 | 0.001 | 0.001 | 0.002 | 0.001 | 0.001 | 0.001 | 0.002 | 0.002 |
+| narrow bump | **0.134** ± 0.021 | 0.151 ± 0.042 | 0.151 ± 0.045 | 0.318 ± 0.041 | 0.701 ± 0.454 | 0.380 ± 0.075 | 0.525 ± 0.317 | 0.378 ± 0.110 | 0.228 ± 0.012 |
+| oblique step | 0.240 ± 0.023 | 0.224 ± 0.013 | 0.212 ± 0.019 | **0.184** ± 0.012 | 0.194 ± 0.020 | 0.204 ± 0.006 | 0.256 ± 0.036 | 0.244 ± 0.038 | 0.207 ± 0.033 |
 
-So expect the adaptive loop to help when something happens in a small region of the design space (a threshold, a
-switch, a resonance). For smooth responses, which I would expect for insulation, lighting or ventilation
-parameters but have not measured on real models, its main value is the **convergence monitoring and automatic
-stopping**: you learn how many simulations were enough instead of guessing.
+* **Localised nonlinearity** (a narrow bump): FLOLA, LOLA and CV-Voronoi cut the error of a Latin hypercube by 34 to
+  41 %. Uncertainty-only criteria (`probabilistic`, `gp_variance`) and `nipv` are worse than a plain design.
+* **Smooth responses:** every design is equally good.
+* **An oblique step:** differences are within the spread between seeds.
 
-The benchmark is `docs/benchmarks/adaptive_vs_lhs.py`.
+**The platform's seven tests** (real EnergyPlus, 35 training points, one seed per test, error on 25 independent
+simulations; `docs/benchmarks/platform_benchmark.py`):
+
+| strategy | mean nrmse over the 7 tests |
+|---|---|
+| plain Latin hypercube | 0.020 |
+| `nipv` | 0.021 |
+| `latin_hypercube` (maximin) | 0.022 |
+| `flola_voronoi` | 0.022 |
+| `cv_voronoi` | 0.023 |
+| `lola_voronoi` | 0.027 |
+| `probabilistic` | 0.036 |
+
+No adaptive strategy beat the plain Latin hypercube on these models: their responses to insulation, lighting,
+ventilation and shading set points are smooth, and a Gaussian process with 35 points already reaches 1 to 3 %
+error. So expect the adaptive loop to help when something happens in a small region of the design space (a
+threshold, a switch, a resonance). For smooth building responses its main value is the **convergence monitoring
+and automatic stopping**: you learn how many simulations were enough instead of guessing.
 
 ## Why a Gaussian process with restarts
 
@@ -117,22 +147,3 @@ errors around 1.0 for some Latin-hypercube designs and 0.1 for others, which mad
 meaningless. {class}`~bdopt.surrogate.GPSurrogate` therefore bounds the length scales to what makes sense in the
 unit cube, restarts the optimisation 8 times and retries with more restarts if it detects the collapsed solution
 (`tests/test_surrogate.py::test_gp_not_degenerate_across_lhs_designs`).
-
-## Using harlow's samplers
-
-{class}`~bdopt.adaptive.HarlowAdaptiveSampler` runs [harlow](https://github.com/TNO/harlow)'s own sampler
-(`FuzzyLolaVoronoi`, `LolaVoronoi`, `ProbabilisticSampler` ...) on a bdopt problem; bounds, scaling, categorical
-handling and the target function are generated for you.
-
-```python
-from bdopt.adaptive import HarlowAdaptiveSampler
-
-result = HarlowAdaptiveSampler(problem, evaluator, method="FuzzyLolaVoronoi").run(
-    n_initial=20, n_test=5, max_iter=40, tol=0.01
-)
-```
-
-It returns the same {class}`~bdopt.adaptive.AdaptiveResult`. harlow 0.1.0 imports TensorFlow and
-TensorFlow-Probability when it is imported, so installing it pulls in TensorFlow; with current releases you also
-need `pip install tf_keras networkx`, and `TF_USE_LEGACY_KERAS=1` (set for you). The bridge is tested
-(`tests/test_harlow_bridge.py`) but nothing else in bdopt needs it.

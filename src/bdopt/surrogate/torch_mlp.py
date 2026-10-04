@@ -11,11 +11,15 @@ from .base import Surrogate
 _ACT = {"relu": nn.ReLU, "tanh": nn.Tanh, "silu": nn.SiLU, "gelu": nn.GELU, "softplus": nn.Softplus}
 
 
-def _make_net(n_in: int, n_out: int, hidden: tuple[int, ...], activation: str) -> nn.Sequential:
+def _make_net(
+    n_in: int, n_out: int, hidden: tuple[int, ...], activation: str, dropout: float = 0.0
+) -> nn.Sequential:
     layers: list[nn.Module] = []
     prev = n_in
     for h in hidden:
         layers += [nn.Linear(prev, h), _ACT[activation]()]
+        if dropout > 0:
+            layers.append(nn.Dropout(dropout))
         prev = h
     layers.append(nn.Linear(prev, n_out))
     return nn.Sequential(*layers)
@@ -55,7 +59,7 @@ class TorchMLP(Surrogate):
         n_val = int(round(self.val_fraction * n)) if n >= 10 and self.val_fraction > 0 else 0
         perm = torch.randperm(n, generator=g)
         va, tr = perm[:n_val], perm[n_val:]
-        net = _make_net(U.shape[1], Z.shape[1], self.hidden, self.activation)
+        net = _make_net(U.shape[1], Z.shape[1], self.hidden, self.activation, getattr(self, 'dropout', 0.0))
         opt = torch.optim.Adam(net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         loss_fn = nn.MSELoss()
         best, best_state, since = float("inf"), None, 0
@@ -65,7 +69,12 @@ class TorchMLP(Surrogate):
             loss = loss_fn(net(U[tr]), Z[tr])
             loss.backward()
             opt.step()
-            monitor = loss_fn(net(U[va]), Z[va]).item() if n_val else loss.item()
+            if n_val:
+                net.eval()
+                with torch.no_grad():
+                    monitor = loss_fn(net(U[va]), Z[va]).item()
+            else:
+                monitor = loss.item()
             if monitor < best - 1e-9:
                 best, since = monitor, 0
                 best_state = {k: v.clone() for k, v in net.state_dict().items()}

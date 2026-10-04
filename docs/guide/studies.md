@@ -162,8 +162,7 @@ See {class}`~bdopt.simulation.CommandRunner`.
 |---|---|---|
 | `method` | `adaptive`, or a fixed design: `lhs`, `sobol`, `random` | `adaptive` |
 | `seed` | seed of everything random | `0` |
-| `adaptive_method` | `flola_voronoi`, `lola_voronoi`, `voronoi`, `gp_variance`, `random` (or a harlow class name with `engine: harlow`) | `flola_voronoi` |
-| `engine` | `native` or `harlow` | `native` |
+| `adaptive_method` | `flola_voronoi`, `lola_voronoi`, `cv_voronoi`, `voronoi`, `probabilistic`, `gp_variance`, `nipv`, `latin_hypercube`, `random` | `flola_voronoi` |
 | `n_initial`, `n_test`, `max_iter`, `batch`, `tol`, `max_evaluations` | as in {doc}`adaptive-sampling` | |
 | `n_samples` | size of a fixed design | `5 * n_parameters` |
 | `n_test` (fixed designs) | extra held-out simulations | `0` |
@@ -172,7 +171,7 @@ See {class}`~bdopt.simulation.CommandRunner`.
 ### `surrogate`
 
 ```yaml
-surrogate: {type: gp}                                     # gp | mlp | torch_mlp
+surrogate: {type: gp}                                     # any name of bdopt.surrogate.SURROGATES, or torch_mlp, mc_dropout_mlp, multitask_gp, deep_kernel_gp
 surrogate: {type: torch_mlp, params: {hidden: [32, 64, 32], n_ensemble: 3}}
 ```
 

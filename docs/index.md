@@ -1,8 +1,8 @@
 # bdopt
 
-**Building design optimization with EnergyPlus 8.7 and newer.**
+**Building design optimization with EnergyPlus.**
 Parametric studies, adaptive sampling, surrogate models and multi-objective optimization,
-as a plain Python library (no Docker, no TensorFlow).
+as a plain Python library (no Docker needed).
 
 ```{image} _static/img/adaptive_vs_lhs.png
 :alt: Adaptive sampling concentrates the simulations where the response is nonlinear
@@ -65,12 +65,13 @@ Every public class and function.
   - {class}`~bdopt.Parameter` with a {class}`~bdopt.FieldSelector` (where in the IDF) and a
     {class}`~bdopt.RangeParameter`, {class}`~bdopt.IntegerParameter` or {class}`~bdopt.CategoryParameter`.
 * - Run EnergyPlus
-  - {class}`~bdopt.EnergyPlusEvaluator`: parallel runs, on-disk cache, failure handling, any version from 8.7.
+  - {class}`~bdopt.EnergyPlusEvaluator`: parallel runs, on-disk cache, failure handling, the EnergyPlus version of your model.
 * - Choose the simulations
   - {mod}`bdopt.sampling` (LHS, Sobol, random, factorial) and {class}`~bdopt.adaptive.AdaptiveSampler`.
 * - Build a cheap model
-  - {class}`~bdopt.surrogate.GPSurrogate`, {class}`~bdopt.surrogate.MLPSurrogate`,
-    {class}`~bdopt.surrogate.TorchMLP`.
+  - fifteen models, from {class}`~bdopt.surrogate.GPSurrogate` and
+    {class}`~bdopt.surrogate.PolynomialSurrogate` to {class}`~bdopt.surrogate.DeepKernelGPSurrogate` and
+    {class}`~bdopt.surrogate.TorchMLP`, or let {class}`~bdopt.surrogate.AutoSurrogate` choose.
 * - Optimize
   - {func}`~bdopt.optimize.nsga2`, {func}`~bdopt.optimize.nsga3`, with categorical variables and constraints.
 * - Automate

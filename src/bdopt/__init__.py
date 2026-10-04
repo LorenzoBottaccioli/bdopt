@@ -1,4 +1,4 @@
-"""bdopt -- building design optimization with EnergyPlus 8.7+.
+"""bdopt -- building design optimization with EnergyPlus.
 
 Typical flow::
 
@@ -21,6 +21,7 @@ from .parameters import (
     FieldSelector,
     GenericSelector,
     IntegerParameter,
+    NullSelector,
     Parameter,
     ParameterError,
     RangeParameter,
@@ -40,6 +41,7 @@ __all__ = [
     "FunctionEvaluator",
     "FunctionReader",
     "GenericSelector",
+    "NullSelector",
     "IDFObject",
     "IntegerParameter",
     "MeterReader",

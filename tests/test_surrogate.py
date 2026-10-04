@@ -89,3 +89,46 @@ def test_predict_keeps_the_index(data):
     t.index = [10, 20, 30]
     m = GPSurrogate(n_restarts=1).fit(train, pr)
     assert list(m.predict(t).index) == [10, 20, 30]
+
+
+ACCURACY = {  # minimum R^2 on the smooth analytic test problem with 60 training points
+    "gp": 0.95, "random_forest": 0.8, "extra_trees": 0.85, "gradient_boosting": 0.85, "svr": 0.8,
+    "kernel_ridge": 0.85, "knn": 0.6, "polynomial": 0.7, "rbf": 0.85,
+}
+
+
+@pytest.mark.parametrize("kind", sorted(ACCURACY))
+def test_every_sklearn_surrogate_learns_the_response(data, kind):
+    from bdopt.surrogate import make_surrogate
+
+    pr, train, test = data
+    m = make_surrogate(kind).fit(train, pr)
+    assert m.score(test)["r2"].min() > ACCURACY[kind], m.score(test)
+    assert m.predict(test).shape == (300, 2)
+    assert (m.predict_unit_std(pr.encode(test)) is not None) == m.has_uncertainty
+
+
+def test_auto_surrogate_picks_a_model_and_reports_scores(data):
+    from bdopt.surrogate import AutoSurrogate, GPSurrogate, PolynomialSurrogate, make_surrogate
+
+    pr, train, test = data
+    m = AutoSurrogate(candidates=[GPSurrogate(n_restarts=2), PolynomialSurrogate()], cv=3).fit(train, pr)
+    assert m.selected_ in ("GPSurrogate", "PolynomialSurrogate")
+    assert len(m.cv_scores_) == 2 and m.score(test)["r2"].min() > 0.9
+    assert isinstance(make_surrogate("gp"), GPSurrogate)
+    with pytest.raises(ValueError, match="unknown surrogate"):
+        make_surrogate("nope")
+
+
+@pytest.mark.parametrize("kind", ["multitask_gp", "deep_kernel_gp", "mc_dropout_mlp"])
+def test_torch_surrogates_with_uncertainty(data, kind):
+    pytest.importorskip("torch")
+    from bdopt.surrogate import make_surrogate
+
+    pr, train, test = data
+    m = make_surrogate(kind).fit(train, pr)
+    assert m.score(test)["r2"].min() > 0.5, m.score(test)
+    std = m.predict_unit_std(pr.encode(test))
+    assert std.shape == (300, 2) and (std > 0).all()
+    m2 = m.clone().fit(train, pr)                      # reproducible for a fixed seed
+    assert np.allclose(m.predict(test).to_numpy(), m2.predict(test).to_numpy(), atol=1e-6)

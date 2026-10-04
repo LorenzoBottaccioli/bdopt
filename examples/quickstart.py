@@ -8,7 +8,6 @@ Needs an EnergyPlus 9.6 installation (python tools/install_eplus.py 9.6).
 from pathlib import Path
 
 from bdopt import (
-    CategoryParameter,
     EnergyPlusEvaluator,
     FieldSelector,
     Parameter,
