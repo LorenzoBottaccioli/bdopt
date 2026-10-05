@@ -38,6 +38,7 @@ All of them are built from a short name too: `make_surrogate("random_forest")`, 
 | `mlp` | {class}`~bdopt.surrogate.MLPSurrogate` | cheap neural network | scikit-learn `MLPRegressor` with a grid search over size and regularisation |
 | `torch_mlp` | {class}`~bdopt.surrogate.TorchMLP` | flexible, many points, ensembles for uncertainty | PyTorch |
 | `mc_dropout_mlp` | {class}`~bdopt.surrogate.MCDropoutMLP` | network with a predictive standard deviation from dropout (an approximate Bayesian network) | PyTorch |
+| `decision_tree`, `hist_gradient_boosting`, `adaboost`, `lightgbm`, `xgboost`, `lasso_polynomial`, `pce`, `elm`, `universal_kriging`, `bagging`, `stacking`, `deep_ensemble`, `sparse_gp` | see {doc}`surrogate-models` | | |
 | `auto` | {class}`~bdopt.surrogate.AutoSurrogate` | cross-validates a list of candidates and keeps the best | `selected_` and `cv_scores_` tell what it chose |
 
 On the platform's seven tests (35 training simulations, error on 25 independent simulations, mean nrmse) the

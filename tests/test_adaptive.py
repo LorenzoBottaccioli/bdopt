@@ -156,3 +156,102 @@ def test_initial_data_reused():
     init = ev.evaluate(sampling.lhs(pr, 9, seed=1), keep_input=True)
     r = AdaptiveSampler(pr, ev, surrogate=fast_gp(), seed=0).run(initial_data=init, n_test=4, max_iter=1, tol=0, verbose=False)
     assert len(r.data) == 10 and r.n_evaluations == 4 + 1
+
+
+# ---- criteria added from the literature ---------------------------------------------------------
+
+
+def _gp_state(n=15, d=2, seed=0, corner=0.4):
+    pr, ev = analytic_problem(d)
+    X = np.random.default_rng(seed).random((n, d)) * corner  # every sample in one corner
+    Y = ev.evaluate_unit(X)
+    return pr, X, Y, fast_gp().fit_unit(X, Y, pr)
+
+
+@pytest.mark.parametrize("name", ["greedy", "cvt", "lipschitz", "qbc", "loocv", "idw", "soas", "sample_min", "ucb"])
+def test_new_criteria_look_outside_the_sampled_corner(name):
+    from bdopt.adaptive import criteria
+
+    pr, X, Y, model = _gp_state()
+    rng = np.random.default_rng(1)
+    fn = {
+        "greedy": lambda: criteria.propose_greedy(X, 1, rng, pr),
+        "cvt": lambda: criteria.propose_cvt(X, 1, rng, pr),
+        "lipschitz": lambda: criteria.propose_lipschitz(X, Y, 1, rng, pr),
+        "qbc": lambda: criteria.propose_qbc(X, Y, model, 1, rng, pr),
+        "loocv": lambda: criteria.propose_loocv(X, Y, model, 1, rng, pr),
+        "idw": lambda: criteria.propose_idw(X, Y, model, 1, rng, pr),
+        "soas": lambda: criteria.propose_soas(X, Y, model, 1, rng, pr),
+        "sample_min": lambda: criteria.propose_acquisition("sample_min", X, Y, model, 1, rng, pr),
+        "ucb": lambda: criteria.propose_acquisition("ucb", X, Y, model, 1, rng, pr),
+    }[name]
+    new = fn()
+    assert new.shape == (1, 2) and np.isfinite(new).all()
+    if name not in ("sample_min", "soas"):  # these seek a low value, not a gap
+        assert new.max() > 0.5, new
+
+
+def test_greedy_increases_the_smallest_distance_and_batches_do_not_collide():
+    from bdopt.adaptive import criteria
+
+    pr, X, _, _ = _gp_state()
+    new = criteria.propose_greedy(X, 4, np.random.default_rng(0), pr)
+    assert len(np.unique(new.round(9), axis=0)) == 4
+    d_old = np.sqrt(((X[:, None] - X[None]) ** 2).sum(-1))
+    np.fill_diagonal(d_old, np.inf)
+    d_new = np.sqrt(((new[:, None] - X[None]) ** 2).sum(-1)).min(axis=1)
+    assert d_new.min() > d_old.min()
+
+
+def test_sequence_continuation_is_deterministic_and_extends_without_repeats():
+    from bdopt.adaptive import criteria
+
+    pr, X, _, _ = _gp_state()
+    a = criteria.propose_sequence("sobol", X, 4, np.random.default_rng(0), pr, seed=3)
+    b = criteria.propose_sequence("sobol", X, 4, np.random.default_rng(9), pr, seed=3)
+    assert np.allclose(a, b)
+    both = np.vstack([X, a])
+    c = criteria.propose_sequence("halton", both, 4, np.random.default_rng(0), pr, seed=3)
+    assert len(np.unique(np.vstack([both, c]).round(9), axis=0)) == len(both) + 4
+
+
+def test_error_window_stays_in_its_box():
+    from bdopt.adaptive import criteria
+
+    pr, X, _, _ = _gp_state()
+    anchor = np.array([0.8, 0.2])
+    new = criteria.propose_error_window(X, anchor, 6, np.random.default_rng(0), pr, window=0.2)
+    assert (np.abs(new - anchor) <= 0.1 + 1e-9).all()
+
+
+def test_acquisition_criteria_require_uncertainty_and_fisher_requires_a_gp():
+    from bdopt.adaptive import criteria
+    from bdopt.surrogate import PolynomialSurrogate
+
+    pr, X, Y, gp = _gp_state()
+    poly = PolynomialSurrogate().fit_unit(X, Y, pr)
+    rng = np.random.default_rng(0)
+    with pytest.raises(ValueError, match="uncertainty"):
+        criteria.propose_acquisition("lcb", X, Y, poly, 1, rng, pr)
+    with pytest.raises(ValueError, match="GPSurrogate"):
+        criteria.propose_fisher_information(X, Y, poly, 1, rng, pr)
+    assert criteria.propose_fisher_information(X, Y, gp, 1, rng, pr, n_pool=30).shape == (1, 2)
+
+
+def test_expected_improvement_prefers_promising_regions():
+    """With a response that is lowest at x = 0 the improvement criteria should not choose the worst corner."""
+    from bdopt.adaptive import criteria
+
+    pr, X, Y, gp = _gp_state(n=25, corner=1.0)
+    new = criteria.propose_acquisition("expected_improvement", X, Y, gp, 1, np.random.default_rng(0), pr)
+    mean = gp.predict_unit(new)[0]
+    assert np.all(mean < gp.predict_unit(X).max(axis=0))
+
+
+@pytest.mark.parametrize("design", ["halton", "hammersley", "maximin_lhs", "fps", "cvt"])
+def test_new_fixed_designs(design):
+    pr, _ = analytic_problem(4)
+    df = sampling.hammersley(pr, 16) if design == "hammersley" else getattr(sampling, design)(pr, 16, seed=0)
+    assert df.shape == (16, 4) and not df.duplicated().any()
+    U = pr.encode(df)
+    assert U.min() >= 0 and U.max() <= 1

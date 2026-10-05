@@ -129,6 +129,96 @@ the already taken points (including the new ones) is largest (maximin).
 
 Uniform random points in the cube: the baseline against which anything else must be judged.
 
+## Criteria from the building literature
+
+These live in `bdopt.adaptive.criteria`. Most work on a pool of 3000 random candidates in the unit cube (snapped to
+valid discrete values) and pick the best-scoring ones; for a batch, scores close to a point already chosen are damped
+(factor $\min(1, \text{dist}/(0.1\sqrt{d}))$) so the points spread out.
+
+### `qbc`: query by committee (Mehrotra & Yi 2023; Bamdad 2020; Nguyen & Nghiem 2026)
+
+1. Fit 5 copies of the surrogate on bootstrap resamples of the samples (a point may appear several times, others not at
+   all).
+2. Predict the pool with every copy.
+3. Score = standard deviation across the copies, divided by the standard deviation of each objective, averaged over
+   objectives. Take the pool point where the committee disagrees most.
+
+Works with any surrogate, with or without its own uncertainty. Costs 5 fits per iteration.
+
+### `loocv`: leave-one-out error (Mehrotra & Yi 2023)
+
+1. Leave-one-out cross-validation (a 20-fold one when there are more than 20 samples): every sample gets the error of a
+   model that did not see it.
+2. Interpolate those errors over the pool by inverse-distance weighting ($w = 1/d^2$).
+3. Score = interpolated error times the distance to the nearest sample (an error-weighted maximin). Take the best.
+
+### `lipschitz`: Lipschitz criterion (Mehrotra & Yi 2023)
+
+1. For every sample, the largest slope $|y_i - y_k| / \|x_i - x_k\|$ towards its 5 nearest samples (summed over the
+   standardised objectives): a local Lipschitz constant $L_i$.
+2. For a pool point, take its nearest sample $i$; score = $L_i \times$ distance to that sample, the largest change the
+   response could have there.
+
+Cheap: no surrogate is needed.
+
+### `idw`: inverse-distance-weighted exploration (Bemporad 2021; Nguyen & Nghiem 2026)
+
+1. With weights $w_i(x) = 1/\|x - x_i\|^2$, normalised, the IDW deviation is
+   $s(x) = \sqrt{\sum_i w_i (y_i - \hat y(x))^2}$, where $\hat y$ is the surrogate's prediction: large where the data around
+   $x$ disagree with the model.
+2. Exploration term $z(x) = \frac{2}{\pi}\arctan(1/\sum_i w_i)$, which is large far from every sample.
+3. Score = $s + \delta z$ ($\delta = 1$).
+
+### `greedy` (farthest point) and `cvt`
+
+* `greedy`: the pool point (5000) whose distance to the nearest sample is largest (maximin). Nguyen & Nghiem found it
+  never beat random sampling for a GP.
+* `cvt`: keep the 25 % of 8000 Monte-Carlo points farthest from every sample and run k-means with `batch` clusters; the
+  centroids are the new points. Existing samples cannot move, so this is a CVT-inspired addition, not a full centroidal
+  tessellation (`bdopt.sampling.cvt` builds a real one for a fixed design).
+
+### `fisher_information`: D-optimal for a Gaussian process (Nguyen & Nghiem 2026)
+
+Needs a fitted `GPSurrogate`. For hyper-parameters $\theta$ of the kernel, the Fisher information of the data is
+$I_{ij} = \tfrac12 \mathrm{tr}(K^{-1} \partial_i K\, K^{-1} \partial_j K)$. For each of 200 candidates, append it to the
+samples, recompute $\log\det I$ with the kernel gradients of the fitted model, and take the candidate that raises it
+most (averaged over objectives): the point that tells the most about the length scales and the noise.
+
+### Optimisation-oriented: `expected_improvement`, `probability_improvement`, `lcb`, `ucb`, `sample_min`
+
+For problems where finding good designs matters more than a global model (Lahmar 2024; Bamdad 2020; Nguyen & Nghiem
+2026).
+
+1. Draw random weights $w$ (a Dirichlet draw, redrawn every iteration as in ParEGO) and scalarise the *standardised*
+   objectives, maximised ones with the opposite sign, so lower is better. The mean is $\sum_j w_j \mu_j$ and the
+   deviation $\sqrt{\sum_j w_j^2 s_j^2}$.
+2. Score each pool point: `sample_min` = $-\mu$ (the surrogate's minimum); `lcb` = $-(\mu - 2s)$; `ucb` = $\mu + 2s$
+   (uncertainty seeking); `expected_improvement` = $s\,[z\Phi(z) + \phi(z)]$ and `probability_improvement` = $\Phi(z)$ with
+   $z = (\text{best so far} - \mu)/s$.
+3. Take the best; EI, PI, LCB and UCB need a surrogate with uncertainty.
+
+### `soas`: committee with a low-value filter (Bamdad et al. 2020)
+
+1. Build a bootstrap committee as in `qbc`; the pool's committee-mean value is scalarised as above.
+2. Keep the pool points whose mean is below the $p$-th percentile; $p$ starts at 50 % and falls by 5 points per
+   iteration to 1 %.
+3. Among those, take the largest committee variance: uncertain *and* promising.
+
+### Sequences and mixes: `sobol_seq`, `halton`, `mixed`, `error_window`
+
+* `sobol_seq`, `halton`: continue a scrambled low-discrepancy sequence from position $n$ (the number of points
+  already taken), so the full design is the sequence's first $n + k$ points (apart from duplicates after snapping).
+* `mixed` (Legashev et al. 2024): round robin by iteration: random, Latin hypercube, Sobol' sequence. Their full
+  factorial is left out because it piles points in the corners.
+* `error_window` (Legashev et al. 2024): take the held-out test point (or, without a test set, the training point)
+  with the largest scaled prediction error and draw uniform points in a box of relative width 0.3 around it.
+
+### Fixed designs (`bdopt.sampling`)
+
+Besides `lhs`, `sobol`, `random` and `factorial`: `halton`, `hammersley` (needs the final size, not extendable),
+`maximin_lhs` (best of 200 Latin hypercubes by the smallest pairwise distance), `fps` (farthest-point sampling) and
+`cvt` (k-means centroids of uniform points).
+
 ## Which one?
 
 * Unknown response, want something safe: `flola_voronoi` (default) or `cv_voronoi`.
@@ -136,4 +226,5 @@ Uniform random points in the cube: the baseline against which anything else must
   {doc}`adaptive-sampling`.
 * Smooth responses (insulation, lighting, ventilation, as in the platform's seven tests): a plain Latin hypercube
   was as good; use the loop for its stopping rule.
-* Avoid `probabilistic` and `gp_variance` as the only criterion.
+* Avoid `probabilistic`, `gp_variance` and `greedy` as the only criterion.
+* Optimising a design rather than modelling the response: the acquisition functions above.

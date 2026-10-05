@@ -248,3 +248,100 @@ class DeepKernelGPSurrogate(Surrogate):
             V = torch.linalg.solve_triangular(self._chol[j], (self._amp[j] * Ks).T, upper=False)
             out.append(torch.sqrt(torch.clamp(self._amp[j] - (V**2).sum(0), min=1e-12)))
         return torch.stack(out, dim=1).numpy()
+
+
+class DeepEnsembleMLP(TorchMLP):
+    """Deep ensemble (Lakshminarayanan et al. 2017): ``n_ensemble`` independently initialised networks; the mean is the
+    prediction and the spread between networks the uncertainty."""
+
+    def __init__(self, hidden: tuple[int, ...] = (64, 64), n_ensemble: int = 5, activation: str = "silu",
+                 lr: float = 3e-3, weight_decay: float = 1e-4, epochs: int = 3000, patience: int = 300,
+                 val_fraction: float = 0.0, seed: int = 0):
+        super().__init__(hidden=hidden, activation=activation, lr=lr, weight_decay=weight_decay, epochs=epochs,
+                         patience=patience, val_fraction=val_fraction, n_ensemble=n_ensemble, seed=seed)
+
+
+class SparseGPSurrogate(Surrogate):
+    """Sparse Gaussian process (variational free energy, Titsias 2009): ``n_inducing`` inducing points (k-means
+    centres of the training inputs) summarise the data, so cost grows as ``n * m**2`` instead of ``n**3``. One process per
+    objective with an ARD kernel; for ``n <= n_inducing`` it reduces to the exact Gaussian process."""
+
+    has_uncertainty = True
+
+    def __init__(self, n_inducing: int = 50, kernel: str = "matern52", max_iter: int = 100, seed: int = 0):
+        if kernel not in _KERN:
+            raise ValueError(f"kernel must be one of {sorted(_KERN)}")
+        self.n_inducing, self.kernel, self.max_iter, self.seed = n_inducing, kernel, max_iter, seed
+
+    def _parts(self, p, X, Z_, y):
+        k = _KERN[self.kernel]
+        ls = _MIN_LS + F.softplus(p["ls"])
+        amp = F.softplus(p["amp"])
+        sig2 = F.softplus(p["noise"]) + 1e-6
+        m = len(Z_)
+        Kmm = amp * k(Z_, Z_, ls) + 1e-6 * torch.eye(m, dtype=_DT)
+        Kmn = amp * k(Z_, X, ls)
+        L = torch.linalg.cholesky(Kmm)
+        A = torch.linalg.solve_triangular(L, Kmn, upper=False) / torch.sqrt(sig2)
+        B = torch.eye(m, dtype=_DT) + A @ A.T
+        LB = torch.linalg.cholesky(B)
+        c = torch.linalg.solve_triangular(LB, (A @ y)[:, None], upper=False)[:, 0] / torch.sqrt(sig2)
+        return k, ls, amp, sig2, L, LB, c, A
+
+    def _neg_elbo(self, p, X, Z_, y):
+        n = len(X)
+        _, _, amp, sig2, _, LB, c, A = self._parts(p, X, Z_, y)
+        bound = (-0.5 * n * torch.log(2 * np.pi * sig2) - torch.log(torch.diagonal(LB)).sum()
+                 - 0.5 * (y @ y) / sig2 + 0.5 * (c @ c) - 0.5 * n * amp / sig2 + 0.5 * (A**2).sum())
+        return -bound
+
+    def _fit(self, U, Z):
+        from sklearn.cluster import KMeans
+
+        torch.manual_seed(self.seed)
+        X = torch.as_tensor(U, dtype=_DT)
+        d = U.shape[1]
+        m = min(self.n_inducing, len(U))
+        centres = U if m == len(U) else KMeans(n_clusters=m, n_init=3, random_state=self.seed).fit(U).cluster_centers_
+        Zi = torch.as_tensor(centres, dtype=_DT)
+        self.heads_ = []
+        for j in range(Z.shape[1]):
+            y = torch.as_tensor(Z[:, j], dtype=_DT)
+            p = {"ls": torch.full((d,), float(np.log(np.expm1(0.5))), dtype=_DT), "amp": torch.zeros((), dtype=_DT),
+                 "noise": torch.full((), -4.0, dtype=_DT)}
+            for v in p.values():
+                v.requires_grad_(True)
+            opt = torch.optim.LBFGS(list(p.values()), lr=0.5, max_iter=self.max_iter, line_search_fn="strong_wolfe")
+
+            def closure(p=p, y=y, opt=opt):
+                opt.zero_grad()
+                loss = self._neg_elbo(p, X, Zi, y)
+                loss.backward()
+                return loss
+
+            try:
+                opt.step(closure)
+            except (RuntimeError, torch.linalg.LinAlgError):
+                pass
+            q = {k: v.detach() for k, v in p.items()}
+            with torch.no_grad():
+                k, ls, amp, sig2, L, LB, c, _ = self._parts(q, X, Zi, y)
+            self.heads_.append((q, k, ls, amp, sig2, L, LB, c))
+        self._Zi = Zi
+
+    def _predict_head(self, head, U):
+        q, k, ls, amp, sig2, L, LB, c = head
+        Xs = torch.as_tensor(U, dtype=_DT)
+        with torch.no_grad():
+            Kms = amp * k(self._Zi, Xs, ls)
+            tmp1 = torch.linalg.solve_triangular(L, Kms, upper=False)
+            tmp2 = torch.linalg.solve_triangular(LB, tmp1, upper=False)
+            mean = tmp2.T @ c
+            var = amp - (tmp1**2).sum(0) + (tmp2**2).sum(0)
+        return mean.numpy(), torch.sqrt(torch.clamp(var, min=1e-12)).numpy()
+
+    def _predict(self, U):
+        return np.column_stack([self._predict_head(h, U)[0] for h in self.heads_])
+
+    def _predict_std(self, U):
+        return np.column_stack([self._predict_head(h, U)[1] for h in self.heads_])

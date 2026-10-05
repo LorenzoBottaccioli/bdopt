@@ -74,6 +74,48 @@ prediction, spread = uncertainty.
 0.1 that stays active at prediction time; 50 stochastic passes give a mean and a standard deviation (Monte-Carlo
 dropout, an approximate Bayesian neural network).
 
+## More models
+
+**`decision_tree` {class}`~bdopt.surrogate.DecisionTreeSurrogate`.** One regression tree, depth (3 to 12) and leaf size
+chosen by 3-fold cross-validation. The weakest baseline.
+
+**`hist_gradient_boosting` {class}`~bdopt.surrogate.HistGradientBoostingSurrogate`.** scikit-learn histogram boosting
+(300 rounds, depth 4, learning rate 0.05), one model per objective; fast on many points.
+
+**`adaboost` {class}`~bdopt.surrogate.AdaBoostSurrogate`.** AdaBoost.R2 over depth-3 trees (200 rounds).
+
+**`lightgbm` {class}`~bdopt.surrogate.LightGBMSurrogate`, `xgboost` {class}`~bdopt.surrogate.XGBoostSurrogate`.**
+The two boosting libraries used in the literature (Legashev et al. found LightGBM best). Install with
+`pip install "bdopt[ml]"`.
+
+**`lasso_polynomial` {class}`~bdopt.surrogate.LassoPolynomialSurrogate`.** Monomials of degree up to 3 involving at most
+two parameters (so the term count stays manageable with 15 parameters), elastic-net penalty by 5-fold cross-validation:
+a sparse response surface.
+
+**`pce` {class}`~bdopt.surrogate.PCESurrogate`.** Sparse polynomial chaos: orthonormal Legendre polynomials on the unit
+cube (same truncation), coefficients by least-angle regression with the number of terms chosen by cross-validation.
+`first_order_indices_` gives first-order Sobol' sensitivity indices straight from the coefficients.
+
+**`elm` {class}`~bdopt.surrogate.ELMSurrogate`** (uncertainty). Extreme learning machine: a random fixed tanh layer of 200
+units and ridge-regressed output weights; 10 independent machines give a mean and a spread.
+
+**`universal_kriging` {class}`~bdopt.surrogate.UniversalKrigingSurrogate`** (uncertainty). A ridge-regressed linear trend
+plus a Gaussian process on the residuals; extrapolates better than a zero-mean GP when the response has a global trend.
+
+**`bagging` {class}`~bdopt.surrogate.BaggingSurrogate`** (uncertainty). 10 bootstrap copies of any base surrogate (kernel ridge
+by default); mean and spread give uncertainty to models that have none, which also enables `probabilistic`, `gp_variance`
+and the acquisition methods.
+
+**`stacking` {class}`~bdopt.surrogate.StackingSurrogate`.** Out-of-fold predictions of GP, kernel ridge, RBF and SVR
+combined with non-negative least-squares weights per objective, bases refitted on all data.
+
+**`deep_ensemble` {class}`~bdopt.surrogate.DeepEnsembleMLP`** (uncertainty, PyTorch). Five independently initialised
+64-64 networks; mean and spread.
+
+**`sparse_gp` {class}`~bdopt.surrogate.SparseGPSurrogate`** (uncertainty, PyTorch). Variational sparse GP (Titsias): 50
+inducing points (k-means centres), hyper-parameters by L-BFGS on the collapsed bound, cost $O(nm^2)$; equals the exact
+GP when there are no more samples than inducing points.
+
 ## Automatic choice
 
 **`auto` {class}`~bdopt.surrogate.AutoSurrogate`.** Cross-validates (5-fold) a list of candidates (default: GP,

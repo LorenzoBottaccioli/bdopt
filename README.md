@@ -9,11 +9,13 @@ multi-objective optimization (NSGA-II / NSGA-III). Built for the Smart Building 
   and names that changed between releases are aliased (see [EnergyPlus versions](docs/guide/energyplus-versions.md)).
 * **Independent library.** `pip install` + any EnergyPlus install, on any OS. No Docker, no fixed paths
   (a Dockerfile is provided as a convenience, nothing depends on it).
-* **Nine adaptive sampling strategies** in numpy/scipy: fuzzy LOLA-Voronoi, LOLA-Voronoi, cross-validation
-  Voronoi, Voronoi, probabilistic (largest predictive deviation), GP variance, negative integrated posterior
-  variance, maximin Latin hypercube and random.
-* **Fifteen surrogate models**, from polynomials and RBF interpolation to multi-task and deep-kernel Gaussian
-  processes, plus automatic selection by cross-validation.
+* **Twenty-six adaptive sampling strategies** in numpy/scipy: fuzzy LOLA-Voronoi, LOLA-Voronoi, cross-validation
+  Voronoi, Voronoi, probabilistic, GP variance, negative integrated posterior variance, query by committee,
+  leave-one-out, Lipschitz, inverse-distance weighting, greedy, CVT, Fisher information, expected improvement,
+  probability of improvement, lower/upper confidence bound, sample-min, SOAS, Sobol'/Halton sequences, mixed,
+  error window, maximin Latin hypercube and random.
+* **Twenty-eight surrogate models**, from polynomials, PCE and RBF interpolation to boosting libraries, multi-task,
+  deep-kernel and sparse Gaussian processes, ensembles and automatic selection by cross-validation.
 * **Categorical parameters are first-class** (glazing type, construction sets ...), in sampling, surrogates
   and optimization.
 
@@ -61,9 +63,9 @@ EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH
 | `bdopt.Problem`, `Parameter`, `FieldSelector`, `RangeParameter`, `IntegerParameter`, `CategoryParameter`, `GenericSelector` | the design space; everything numeric happens in the unit cube, so bounds, order and scaling are never typed by hand |
 | `MeterReader`, `VariableReader`, `FunctionReader` | objectives (units, aggregation, direction min/max, custom post-processing of `eplusout.sql`) |
 | `EnergyPlusEvaluator` | parallel runs, on-disk cache (resume after a crash for free), failure handling (NaN + kept run directory), EnergyPlus warning/severe-error counts and an `on_severe` policy, `auto_upgrade` |
-| `bdopt.sampling` | `lhs`, `sobol`, `random`, `factorial` with constraints |
-| `bdopt.adaptive.AdaptiveSampler` | `flola_voronoi` (default), `lola_voronoi`, `cv_voronoi`, `voronoi`, `probabilistic`, `gp_variance`, `nipv`, `latin_hypercube`, `random`; stops on test error, iterations or simulation budget |
-| `bdopt.surrogate` | `GPSurrogate`, `MultiTaskGPSurrogate`, `DeepKernelGPSurrogate`, `RandomForestSurrogate`, `ExtraTreesSurrogate`, `GradientBoostingSurrogate`, `SVRSurrogate`, `KernelRidgeSurrogate`, `KNNSurrogate`, `PolynomialSurrogate`, `RBFSurrogate`, `MLPSurrogate`, `TorchMLP`, `MCDropoutMLP`, `AutoSurrogate`; metrics, cross-validation |
+| `bdopt.sampling` | `lhs`, `sobol`, `halton`, `hammersley`, `maximin_lhs`, `fps`, `cvt`, `random`, `factorial` with constraints |
+| `bdopt.adaptive.AdaptiveSampler` | 26 methods (`bdopt.adaptive.METHODS`, default `flola_voronoi`; see the [algorithms guide](docs/guide/adaptive-algorithms.md)); stops on test error, iterations or simulation budget |
+| `bdopt.surrogate` | 28 models (`bdopt.surrogate.SURROGATES`; see the [models guide](docs/guide/surrogate-models.md)) incl. `GPSurrogate`, `SparseGPSurrogate`, `UniversalKrigingSurrogate`, `PCESurrogate`, boosting, `BaggingSurrogate`, `AutoSurrogate`; metrics, cross-validation |
 | `bdopt.optimize` | `nsga2`, `nsga3` (pymoo), mixed variables, constraints, `ParetoFront.closest_to_ideal()` |
 | `bdopt.DesignStudy`, `bdopt run study.yaml` | the whole pipeline from a YAML/JSON file (`examples/study.yaml`) |
 | `bdopt.viz` | pairplot, correlation heatmap, parallel coordinates, convergence, parity, Pareto (matplotlib) |

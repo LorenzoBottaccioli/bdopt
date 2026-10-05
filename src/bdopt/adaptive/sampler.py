@@ -14,7 +14,7 @@ from ..evaluator import Evaluator
 from ..problem import Problem
 from ..sampling import lhs_unit
 from ..surrogate import GPSurrogate, Surrogate
-from . import designs
+from . import criteria, designs
 
 METHODS = (
     "flola_voronoi",
@@ -24,6 +24,23 @@ METHODS = (
     "probabilistic",
     "gp_variance",
     "nipv",
+    "qbc",
+    "loocv",
+    "lipschitz",
+    "idw",
+    "greedy",
+    "cvt",
+    "fisher_information",
+    "expected_improvement",
+    "probability_improvement",
+    "lcb",
+    "ucb",
+    "sample_min",
+    "soas",
+    "sobol_seq",
+    "halton",
+    "mixed",
+    "error_window",
     "latin_hypercube",
     "random",
 )
@@ -69,8 +86,12 @@ class AdaptiveSampler:
         ``'lola_voronoi'``, ``'cv_voronoi'`` (cross-validation Voronoi), ``'voronoi'`` (pure
         exploration), ``'probabilistic'`` (largest predictive standard deviation, found by differential
         evolution), ``'gp_variance'`` (same on random candidates), ``'nipv'`` (negative integrated
-        posterior variance; needs a :class:`~bdopt.surrogate.GPSurrogate`), ``'latin_hypercube'``
-        (maximin space filling) or ``'random'`` (baseline). See ``bdopt.adaptive.designs``.
+        posterior variance; needs a :class:`~bdopt.surrogate.GPSurrogate`), ``'qbc'``, ``'loocv'``,
+        ``'lipschitz'``, ``'idw'``, ``'greedy'``, ``'cvt'``, ``'fisher_information'``, the optimisation
+        oriented ``'expected_improvement'``, ``'probability_improvement'``, ``'lcb'``, ``'ucb'``,
+        ``'sample_min'``, ``'soas'``, the sequences ``'sobol_seq'``, ``'halton'``, ``'mixed'``,
+        ``'error_window'``, ``'latin_hypercube'`` (maximin space filling) or ``'random'`` (baseline).
+        See ``bdopt.adaptive.designs`` and ``bdopt.adaptive.criteria``.
     surrogate:
         model refitted at every iteration to measure convergence (default :class:`~bdopt.surrogate.GPSurrogate`).
     seed:
@@ -115,6 +136,30 @@ class AdaptiveSampler:
             return designs.propose_nipv(U, Y, model, batch, rng, pr, avoid)
         if m == "cv_voronoi":
             return designs.propose_cv_voronoi(U, self._scale(Y), model, batch, rng, pr, avoid)
+        if m == "qbc":
+            return criteria.propose_qbc(U, Y, model, batch, rng, pr, avoid)
+        if m == "loocv":
+            return criteria.propose_loocv(U, Y, model, batch, rng, pr, avoid)
+        if m == "lipschitz":
+            return criteria.propose_lipschitz(U, Y, batch, rng, pr, avoid)
+        if m == "idw":
+            return criteria.propose_idw(U, Y, model, batch, rng, pr, avoid)
+        if m == "greedy":
+            return criteria.propose_greedy(U, batch, rng, pr, avoid)
+        if m == "cvt":
+            return criteria.propose_cvt(U, batch, rng, pr, avoid)
+        if m == "fisher_information":
+            return criteria.propose_fisher_information(U, Y, model, batch, rng, pr, avoid)
+        if m in ("expected_improvement", "probability_improvement", "lcb", "ucb", "sample_min"):
+            return criteria.propose_acquisition(m, U, Y, model, batch, rng, pr, avoid)
+        if m == "soas":
+            return criteria.propose_soas(U, Y, model, batch, rng, pr, avoid, iteration=it)
+        if m in ("sobol_seq", "halton"):
+            return criteria.propose_sequence(m.split("_")[0], U, batch, rng, pr, avoid, self.seed)
+        if m == "mixed":
+            return criteria.propose_mixed(U, batch, rng, pr, avoid, iteration=it, seed=self.seed)
+        if m == "error_window":
+            return criteria.propose_error_window(U, self._worst, batch, rng, pr, avoid)
         return designs.propose_voronoi_based(
             U, self._scale(Y), batch, rng, pr, avoid, exploit=m != "voronoi", fuzzy=m == "flola_voronoi",
         )
@@ -139,6 +184,7 @@ class AdaptiveSampler:
                 pred[te] = model.clone().fit_unit(U[tr], Y[tr], self.problem).predict_unit(U[te])
             truth = Y
         err = (pred - truth) / self._y_std
+        self._worst = (Ut if len(Ut) else U)[int(np.argmax((err**2).sum(axis=1)))]
         per_obj = pd.Series(np.sqrt((err**2).mean(axis=0)), index=self.problem.objective_names)
         ss_res = ((pred - truth) ** 2).sum(axis=0)
         ss_tot = ((truth - truth.mean(axis=0)) ** 2).sum(axis=0)
