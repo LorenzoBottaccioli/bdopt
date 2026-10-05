@@ -83,6 +83,71 @@ test), 0.745 for k-NN. Fit times:
 | mlp | 2.04 |
 | auto | 18.81 |
 
+## Many parameters
+
+The platform tests have 6 to 7 parameters. Two tests with more, because the literature says adaptive sampling helps
+most there.
+
+**Analytic responses with 15 and 20 parameters** (`docs/benchmarks/highdim_analytic.py`; one localised bump in two
+parameters plus a smooth trend in three more, the rest nearly inert; Gaussian process; 120 training points; 3 seeds;
+error = RMSE / standard deviation on 3000 independent points; mean ± std over seeds; raw rows in
+`highdim_analytic.csv`). Strategies not listed were not run here.
+
+| 15 parameters | error |
+|---|---|
+| random | 0.251 ± 0.011 |
+| sobol_seq | 0.269 ± 0.015 |
+| latin_hypercube | 0.271 ± 0.035 |
+| plain_lhs | 0.273 ± 0.035 |
+| nipv | 0.275 ± 0.042 |
+| mixed | 0.292 ± 0.048 |
+| cv_voronoi | 0.307 ± 0.030 |
+| qbc | 0.323 ± 0.034 |
+| lola_voronoi | 0.328 ± 0.070 |
+| lipschitz | 0.328 ± 0.069 |
+| cvt | 0.360 ± 0.011 |
+| greedy | 0.402 ± 0.111 |
+| flola_voronoi | 0.415 ± 0.132 |
+
+| 20 parameters | error |
+|---|---|
+| nipv | 0.240 ± 0.023 |
+| random | 0.256 ± 0.031 |
+| mixed | 0.273 ± 0.039 |
+| plain_lhs | 0.273 ± 0.033 |
+| sobol_seq | 0.275 ± 0.026 |
+| latin_hypercube | 0.276 ± 0.026 |
+| flola_voronoi | 0.276 ± 0.013 |
+| cv_voronoi | 0.280 ± 0.009 |
+| qbc | 0.298 ± 0.022 |
+| greedy | 0.309 ± 0.012 |
+| lola_voronoi | 0.311 ± 0.043 |
+| lipschitz | 0.311 ± 0.085 |
+| cvt | 0.334 ± 0.022 |
+
+No strategy beat the plain Latin hypercube clearly; all errors are high (0.24 to 0.42) because 120 points are few for a
+Gaussian process in 15 to 20 dimensions with a localised bump. `nipv` was best at 20 parameters and level with the
+Latin hypercube at 15; FLOLA-Voronoi was the worst at 15 parameters with a large spread across seeds.
+
+**EnergyPlus office with 15 parameters** (`examples/office_15d.py`, `docs/benchmarks/office_15d_benchmark.py`;
+insulation thickness and conductivity, wall and roof absorptance, lights, ventilation, glazing gas gap and glass
+conductivity, and five shading set points; 80 training simulations; 2 seeds; Gaussian process; error = mean
+`nrmse` over the three objectives on 30 independent simulations; mean ± std over the two seeds; raw rows in
+`office_15d.csv`):
+
+| strategy | nrmse |
+|---|---|
+| qbc | 0.0326 ± 0.0047 |
+| lola_voronoi | 0.0357 ± 0.0001 |
+| flola_voronoi | 0.0371 ± 0.0030 |
+| nipv | 0.0400 ± 0.0111 |
+| latin_hypercube | 0.0458 ± 0.0122 |
+| plain_lhs | 0.0464 ± 0.0020 |
+
+Here the committee-based strategy (`qbc`) and the two LOLA-Voronoi variants were 20 to 30 % below the plain Latin
+hypercube, and the gap is larger than the spread between the two seeds for those three. With two seeds this is
+suggestive, not conclusive; `nipv` and the maximin Latin hypercube were level with the baseline within the spread.
+
 ## Analytic responses
 
 Three parameters, 3 seeds, 50 training points, Gaussian-process surrogate, error = RMSE / standard deviation on 3000

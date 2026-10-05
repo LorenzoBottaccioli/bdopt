@@ -32,6 +32,10 @@ pointers only.
 * **Variance-reduction criteria work for Gaussian processes, farthest-point criteria do not.** In the BOPTEST study
   integrated variance reduction (the criterion behind bdopt's `nipv`) and maximum variance were the strongest GP
   criteria, while greedy farthest-point sampling never beat random sampling.
+* **Many parameters.** The literature expects more benefit from adaptive sampling with many parameters. bdopt's
+  own tests are mixed: on a 15-parameter EnergyPlus office (two seeds) committee-based and LOLA-Voronoi sampling had
+  20 to 30 % lower error than a Latin hypercube, while on analytic 15- and 20-parameter responses nothing clearly beat it
+  ({doc}`benchmarks`).
 * **The claimed gains are fragile.** Two of the four experimental studies report no seeds or repetitions, and
   Lahmar et al.'s own tables undercut its abstract. bdopt's benchmark also uses one seed per test; see the caveats
   in {doc}`benchmarks`.

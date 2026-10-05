@@ -170,6 +170,11 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
   (FLOLA 41 % lower error); NIPV and the variance-based methods help a little on the step, within the spread
   between seeds; on the smooth response nothing matters. Methods that chase uncertainty alone
   (`probabilistic`, `gp_variance`) can be much worse than a plain design (they pile samples on the boundary).
+* **Many parameters.** On a 15-parameter EnergyPlus office model (80 training simulations, 2 seeds) query by committee
+  (`qbc`) and the LOLA-Voronoi variants had 20 to 30 % lower error than a plain Latin hypercube
+  (nrmse 0.033 to 0.037 against 0.046; [docs/benchmarks.md](docs/benchmarks.md)). On analytic 15- and 20-parameter
+  responses no strategy clearly beat the Latin hypercube. So the benefit seems to depend on the problem, not only on
+  the number of parameters.
 * **Upgrading a model.** The platform's Office model (EnergyPlus 9.6) upgraded to 25.2 (8 transition steps)
   and simulated; the upgrade took about 230 s once (cached afterwards), and the three objectives differ from
   the 9.6 results by -2.3 %, +4.9 %, -5.8 %. I did not isolate how much of that is the engine and how much the
