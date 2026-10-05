@@ -89,6 +89,7 @@ guide/index
 tutorials/index
 api/index
 benchmarks
+literature
 faq
 contributing
 changelog
