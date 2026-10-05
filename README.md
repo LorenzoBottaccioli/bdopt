@@ -19,6 +19,16 @@ multi-objective optimization (NSGA-II / NSGA-III). Built for the Smart Building 
 * **Categorical parameters are first-class** (glazing type, construction sets ...), in sampling, surrogates
   and optimization.
 
+## What to expect from adaptive sampling
+
+Measured on the platform's seven EnergyPlus models (6 to 7 parameters, 35 training simulations) and read in the
+literature ([docs/literature.md](docs/literature.md)): **a plain Latin hypercube with a Gaussian process is hard to
+beat** when responses are smooth, as insulation, lighting, ventilation and shading set points are. No adaptive
+strategy beat it reliably there. Adaptive sampling pays off with a localised nonlinearity (in the analytic test,
+FLOLA-Voronoi cut the error by 41 %), with very few simulations, or with many parameters; its everyday value is the
+**convergence monitoring and the stopping rule** (how many simulations were enough). The strategies are there to be
+compared on your own model, not because one of them is always better.
+
 ```python
 from bdopt import *
 from bdopt.adaptive import AdaptiveSampler

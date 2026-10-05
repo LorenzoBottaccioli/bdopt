@@ -1,5 +1,13 @@
 # Adaptive sampling
 
+```{admonition} What to expect
+:class: note
+On the platform's seven EnergyPlus models (smooth responses, 35 training simulations) no adaptive strategy beat a plain
+Latin hypercube with a Gaussian process, and the literature reports small or budget-dependent gains
+({doc}`../literature`, {doc}`../benchmarks`). Adaptive sampling helps with a localised nonlinearity, very small budgets
+or many parameters; its practical value is monitoring convergence and stopping. Compare strategies on your own model.
+```
+
 A fixed design (say 60 Latin-hypercube simulations) has to guess how many simulations are enough.
 {class}`~bdopt.adaptive.AdaptiveSampler` starts from a small Latin hypercube plus a held-out test set, then adds
 simulations where the surrogate needs them and stops when the test error is small enough (or a budget is reached).
