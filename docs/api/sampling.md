@@ -26,6 +26,7 @@ Adaptive sampling
 
 .. autoclass:: AdaptiveSampler
 .. autoclass:: AdaptiveResult
+.. autofunction:: suggest_budget
 
 .. py:data:: METHODS
    :module: bdopt.adaptive

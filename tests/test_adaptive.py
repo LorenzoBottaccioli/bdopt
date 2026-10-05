@@ -255,3 +255,41 @@ def test_new_fixed_designs(design):
     assert df.shape == (16, 4) and not df.duplicated().any()
     U = pr.encode(df)
     assert U.min() >= 0 and U.max() <= 1
+
+
+# ---- stopping rules ---------------------------------------------------------------------------
+
+
+def test_plateau_stops_a_run_whose_error_stops_improving():
+    pr, ev = analytic_problem(2)
+    r = AdaptiveSampler(pr, ev, "latin_hypercube", surrogate=fast_gp(), seed=0).run(
+        n_initial=12, n_test=10, max_iter=40, tol=0, patience=3, min_improvement=0.5, verbose=False
+    )
+    assert r.stop_reason == "plateau" and len(r.history) < 41 and not r.converged
+
+
+def test_uncertainty_rule_needs_a_surrogate_with_uncertainty_and_records_max_std():
+    from bdopt.surrogate import PolynomialSurrogate
+
+    pr, ev = analytic_problem(2)
+    with pytest.raises(ValueError, match="uncertainty"):
+        AdaptiveSampler(pr, ev, "random", surrogate=PolynomialSurrogate(), seed=0).run(
+            n_initial=8, n_test=4, max_iter=2, max_std=0.1, verbose=False
+        )
+    r = AdaptiveSampler(pr, ev, "random", surrogate=fast_gp(), seed=0).run(
+        n_initial=10, n_test=5, max_iter=6, tol=0, max_std=100.0, verbose=False
+    )
+    assert r.stop_reason == "uncertainty" and r.converged and "max_std" in r.history
+
+
+def test_suggest_budget_reads_stopping_points_off_the_history():
+    from bdopt.adaptive import suggest_budget
+
+    pr, ev = analytic_problem(2)
+    r = AdaptiveSampler(pr, ev, "latin_hypercube", surrogate=fast_gp(), seed=0).run(
+        n_initial=10, n_test=8, max_iter=8, tol=0, verbose=False
+    )
+    table = suggest_budget(r.history, tols=(1e9, 1e-9), patience=2)
+    assert list(table["rule"][:2]) == ["scaled_rmse <= 1000000000.0", "scaled_rmse <= 1e-09"]
+    assert table.loc[0, "iteration"] == 0 and np.isnan(table.loc[1, "iteration"])
+    assert "max_std <= 0.5" in set(table["rule"])
