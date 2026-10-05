@@ -24,11 +24,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "examples"))
 from platform_tests import build  # noqa: E402
 
 from bdopt import EnergyPlusEvaluator, sampling  # noqa: E402
-from bdopt.adaptive import METHODS, AdaptiveSampler  # noqa: E402
-from bdopt.surrogate import GPSurrogate, make_surrogate  # noqa: E402
+from bdopt.adaptive import AdaptiveSampler  # noqa: E402
+from bdopt.surrogate import _TORCH, GPSurrogate, make_surrogate  # noqa: E402
+from bdopt.surrogate import SURROGATES as REGISTRY
 
-SURROGATES = ["gp", "multitask_gp", "deep_kernel_gp", "random_forest", "extra_trees", "gradient_boosting",
-              "svr", "kernel_ridge", "knn", "polynomial", "rbf", "mlp", "torch_mlp", "mc_dropout_mlp", "auto"]
+#: strategies compared by default (the cheap, distinct ones out of ``bdopt.adaptive.METHODS``)
+METHODS = ["flola_voronoi", "lola_voronoi", "cv_voronoi", "voronoi", "nipv", "gp_variance", "qbc", "loocv",
+           "lipschitz", "greedy", "sobol_seq", "mixed", "latin_hypercube", "random"]
+#: every registered surrogate
+SURROGATES = list(REGISTRY) + list(_TORCH)
 
 
 def error(model, test: pd.DataFrame) -> dict:
@@ -57,6 +61,8 @@ def main() -> None:
     ap.add_argument("--tests", default="6,7,1,4,3,2,5")
     ap.add_argument("--seeds", default="0,1,2,3,4")
     ap.add_argument("--budgets", default="35,60")
+    ap.add_argument("--methods", default=",".join(METHODS))
+    ap.add_argument("--surrogates", default=",".join(SURROGATES))
     ap.add_argument("--batch", type=int, default=5)
     ap.add_argument("--n-test", type=int, default=5)
     ap.add_argument("--n-independent", type=int, default=25)
@@ -85,7 +91,7 @@ def main() -> None:
                 have = done(fa, **key)
                 if "plain_lhs" not in have:
                     append(fa, {**key, "method": "plain_lhs", "n_train": len(lhs), **error(GPSurrogate().fit(lhs, pr), test)})
-                for m in METHODS:
+                for m in args.methods.split(","):
                     if m in have:
                         continue
                     r = AdaptiveSampler(pr, ev, m, GPSurrogate(), seed=seed * 100 + t).run(
@@ -94,7 +100,7 @@ def main() -> None:
                     append(fa, {**key, "method": m, "n_train": len(r.data), **e})
                     print(f"[B{budget} s{seed} t{t}] {m:16s} n={len(r.data)} nrmse={e['nrmse']:.4f}", flush=True)
                 have_s = done(fs, **key)
-                for k in SURROGATES:
+                for k in args.surrogates.split(","):
                     if k in have_s:
                         continue
                     t1 = time.time()
