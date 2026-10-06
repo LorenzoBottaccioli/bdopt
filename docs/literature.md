@@ -26,9 +26,9 @@ pointers only.
   Legashev et al. (EnergyPlus) say so, Bamdad et al. find the advantage lost beyond about 1000 samples, and
   Westermann & Evins, the LOLA-Voronoi paper nearest to bdopt, conclude that neither scheme clearly wins and that
   the benefit appears to vanish going from 4 to 8 parameters. The platform benchmark (35 points, six or seven
-  parameters, EnergyPlus) agrees: no adaptive strategy beat the plain Latin hypercube. Mehrotra & Yi's gains
-  come with 19 inputs and criteria (query-by-committee, cross-validation) that are not all in bdopt;
-  `cv_voronoi` is the closest.
+  parameters, EnergyPlus, 3 seeds) agrees: no adaptive strategy beat the plain Latin hypercube reliably (the best ones
+  win in about half of the test/seed pairs). Mehrotra & Yi's gains come with 19 inputs; bdopt now also has
+  query-by-committee, leave-one-out and Lipschitz criteria, and none of them stood out at six or seven parameters.
 * **Variance-reduction criteria work for Gaussian processes, farthest-point criteria do not.** In the BOPTEST study
   integrated variance reduction (the criterion behind bdopt's `nipv`) and maximum variance were the strongest GP
   criteria, while greedy farthest-point sampling never beat random sampling.
@@ -43,7 +43,7 @@ pointers only.
   build against 1 to 10 s for static ones; bdopt's per-iteration surrogate refits are the same kind of cost.
 * **Surrogate choice.** SVR and Gaussian-process regression were the best thermal-load surrogates in the largest
   EnergyPlus comparison read here (Mehrotra & Yi), which agrees with the platform benchmark, where the Gaussian
-  process was best on all seven tests. The review notes that neural networks dominate the literature (47 %)
+  process family (GP, sparse GP, `auto`) was best on all seven tests. The review notes that neural networks dominate the literature (47 %)
   but that accuracy comparisons across model types cannot be generalised for that reason.
 * **Parameter ranges matter.** Legashev et al. varied weather variables far beyond realistic ranges; their
   error levels are not comparable with design-parameter studies such as the platform's.
