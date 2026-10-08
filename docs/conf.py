@@ -56,7 +56,7 @@ html_theme = "furo"
 html_title = f"bdopt {release}"
 html_static_path = ["_static"]
 html_theme_options = {
-    "source_repository": "https://github.com/lorenzobottaccioli/buidlingdesginoptimization",
+    "source_repository": "https://github.com/LorenzoBottaccioli/bdopt",
     "source_branch": "main",
     "source_directory": "docs/",
 }

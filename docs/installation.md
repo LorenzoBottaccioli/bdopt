@@ -6,7 +6,7 @@ runs on a laptop, a server or a container, and does not depend on Docker.
 ## The package
 
 ```bash
-pip install "bdopt[torch,viz] @ git+https://github.com/lorenzobottaccioli/buidlingdesginoptimization.git"
+pip install "bdopt[torch,viz] @ git+https://github.com/LorenzoBottaccioli/bdopt.git"
 ```
 
 `pip install bdopt` alone gives sampling, adaptive sampling, scikit-learn surrogates and NSGA-II. Extras:
@@ -61,8 +61,8 @@ installers (`.exe`, `.dmg`); on Windows the script runs the installer silently, 
 ## Development install
 
 ```bash
-git clone https://github.com/lorenzobottaccioli/buidlingdesginoptimization.git
-cd buidlingdesginoptimization
+git clone https://github.com/LorenzoBottaccioli/bdopt.git
+cd bdopt
 pip install -e ".[dev]"
 pytest -m "not eplus and not slow"        # no EnergyPlus needed
 ```

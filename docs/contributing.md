@@ -1,7 +1,7 @@
 # Contributing
 
 Bug reports, questions and pull requests are welcome in the
-[repository](https://github.com/lorenzobottaccioli/buidlingdesginoptimization).
+[repository](https://github.com/LorenzoBottaccioli/bdopt).
 
 ## Reporting a problem
 
@@ -12,8 +12,8 @@ useful file.
 ## Development setup
 
 ```bash
-git clone https://github.com/lorenzobottaccioli/buidlingdesginoptimization.git
-cd buidlingdesginoptimization
+git clone https://github.com/LorenzoBottaccioli/bdopt.git
+cd bdopt
 pip install -e ".[dev,docs]"
 ```
 

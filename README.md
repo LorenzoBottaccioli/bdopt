@@ -55,7 +55,7 @@ best = front.closest_to_ideal()
 ## Install
 
 ```bash
-pip install "bdopt[torch,viz] @ git+https://github.com/lorenzobottaccioli/buidlingdesginoptimization.git"
+pip install "bdopt[torch,viz] @ git+https://github.com/LorenzoBottaccioli/bdopt.git"
 python tools/install_eplus.py 9.6          # optional helper: downloads an official EnergyPlus release
 bdopt eplus list                           # what bdopt can see
 ```
