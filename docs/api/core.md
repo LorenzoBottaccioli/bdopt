@@ -15,6 +15,7 @@ Parameters
 
 .. autoclass:: Parameter
 .. autoclass:: FieldSelector
+.. autoclass:: MultiSelector
 .. autoclass:: GenericSelector
 .. autoclass:: RangeParameter
 .. autoclass:: IntegerParameter

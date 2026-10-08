@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import copy
 import re
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -151,12 +151,19 @@ class IDF:
     def find(
         self,
         class_name: str,
-        object_name: str | None = "*",
+        object_name: str | Collection[str] | None = "*",
         where: Callable[[IDFObject], bool] | None = None,
     ) -> list[IDFObject]:
-        """Objects of a class, filtered by name (``'*'``/``None`` = all, case-insensitive)."""
+        """Objects of a class, filtered by name (case-insensitive).
+
+        ``object_name`` is one name, ``'*'``/``None`` for all, or a list/tuple/set of names (every object
+        whose name is in the collection; an empty collection selects nothing).
+        """
         objs = self.by_class(class_name)
-        if object_name not in (None, "*"):
+        if isinstance(object_name, (list, tuple, set, frozenset)):
+            wanted = {str(n).strip().lower() for n in object_name}
+            objs = [o for o in objs if o.name.strip().lower() in wanted]
+        elif object_name not in (None, "*"):
             want = str(object_name).strip().lower()
             objs = [o for o in objs if o.name.strip().lower() == want]
         if where is not None:

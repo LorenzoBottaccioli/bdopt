@@ -9,7 +9,7 @@ categorical parameters (e.g. glazing type) first-class instead of a special case
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -133,16 +133,19 @@ class CategoryParameter:
 class FieldSelector:
     """Addresses one field of IDF objects: ``(class_name, object_name, field_name)``.
 
-    ``object_name='*'`` selects every object of the class. ``where`` restricts the selection, either
-    ``{"Surface Type": "Window"}`` (field name -> required value) or ``callable(IDFObject) -> bool``.
-    Class and field names are resolved against the IDD of the EnergyPlus version in use, so the same
-    selector works across versions (see :mod:`bdopt.eplus.aliases`).
+    ``object_name='*'`` selects every object of the class; a list of names (``["Win 1", "Win 2"]``)
+    selects exactly those objects, and every listed name must exist in the model. ``where`` restricts the
+    selection, either ``{"Surface Type": "Window"}`` (field name -> required value) or
+    ``callable(IDFObject) -> bool``. Class and field names are resolved against the IDD of the
+    EnergyPlus version in use, so the same selector works across versions (see
+    :mod:`bdopt.eplus.aliases`). To write one value into several classes or fields use
+    :class:`MultiSelector`.
     """
 
     def __init__(
         self,
         class_name: str,
-        object_name: str | None = "*",
+        object_name: str | Sequence[str] | None = "*",
         field_name: str | None = None,
         *,
         field_index: int | None = None,
@@ -150,13 +153,23 @@ class FieldSelector:
     ):
         if field_name is None and field_index is None:
             raise ParameterError("give field_name (or field_index)")
+        if isinstance(object_name, (list, tuple, set, frozenset)):
+            object_name = list(object_name)
+            if not object_name:
+                raise ParameterError("object_name is an empty list: it would select nothing")
         self.class_name, self.object_name = class_name, object_name
         self.field_name, self.field_index, self.where = field_name, field_index, where
 
     @property
+    def _object_label(self) -> str:
+        if isinstance(self.object_name, list):
+            return self.object_name[0] if len(self.object_name) == 1 else f"{len(self.object_name)} objects"
+        return str(self.object_name)
+
+    @property
     def default_name(self) -> str:
         """Name used for a parameter that is not given one."""
-        return f"{self.class_name}:{self.object_name}:{self.field_name or self.field_index}"
+        return f"{self.class_name}:{self._object_label}:{self.field_name or self.field_index}"
 
     def _resolve(self, idd: IDD) -> tuple[str, int]:
         if self.field_name is not None:
@@ -188,13 +201,22 @@ class FieldSelector:
         KeyError
             If the class or field does not exist in this EnergyPlus version (with suggestions).
         """
-        n = len(self.targets(idf, idd))
-        if n == 0:
+        found = self.targets(idf, idd)
+        if not found:
             raise ParameterError(
                 f"selector {self.default_name!r} matches no object in the model "
                 f"(class {self.class_name!r}, object {self.object_name!r}, where={self.where!r})"
             )
-        return n
+        if isinstance(self.object_name, list):  # a listed name that is missing is a typo, not "fewer targets"
+            present = {o.name.strip().lower() for o in found}
+            missing = [n for n in self.object_name if str(n).strip().lower() not in present]
+            if missing:
+                shown = ", ".join(repr(n) for n in missing[:5]) + (" ..." if len(missing) > 5 else "")
+                raise ParameterError(
+                    f"selector {self.default_name!r}: {len(missing)} of {len(self.object_name)} listed "
+                    f"{self.class_name} objects do not exist in the model (or fail 'where'): {shown}"
+                )
+        return len(found)
 
     def apply(self, idf: IDF, value, idd: IDD) -> None:
         """Write ``value`` into the selected field of every selected object (in place)."""
@@ -206,10 +228,132 @@ class FieldSelector:
             o.set(idx, value)
 
     def __repr__(self) -> str:
-        return (
-            f"FieldSelector({self.class_name!r}, {self.object_name!r}, "
-            f"{self.field_name or self.field_index!r})"
+        obj = self._object_label if isinstance(self.object_name, list) else repr(self.object_name)
+        return f"FieldSelector({self.class_name!r}, {obj}, {self.field_name or self.field_index!r})"
+
+
+class MultiSelector:
+    """One design variable that writes the same value in several places.
+
+    The places can be different objects, classes and fields, e.g. one thermostat set point written into
+    the ``Field 4`` of several ``Schedule:Compact`` objects, or one glazing type written into the
+    construction of every window of a facade. The parameter is a single column of the design table, so
+    samplers, surrogates and optimizers see one variable, not one per target::
+
+        sel = MultiSelector([
+            FieldSelector("Schedule:Compact", "Heating Z1", field_index=4),
+            FieldSelector("Schedule:Compact", "Heating Z2", field_index=4),
+            FieldSelector("ThermostatSetpoint:SingleHeating", "*", "Setpoint Temperature Schedule Name"),
+        ])
+        Parameter(sel, RangeParameter(18, 22), name="Heating set point")
+
+    Use :meth:`from_targets` to build it from a list of targets.
+    """
+
+    def __init__(self, selectors: Sequence[Any], name: str | None = None):
+        self.selectors = list(selectors)
+        if not self.selectors:
+            raise ParameterError("a MultiSelector needs at least one selector")
+        for s in self.selectors:
+            if not (hasattr(s, "apply") and hasattr(s, "validate")):
+                raise ParameterError(f"{s!r} is not a selector (it needs validate() and apply())")
+        self._name = name
+
+    @classmethod
+    def from_targets(
+        cls,
+        targets: Sequence[str | Mapping[str, Any]],
+        *,
+        class_name: str | None = None,
+        field_name: str | None = None,
+        field_index: int | None = None,
+        name: str | None = None,
+    ) -> MultiSelector:
+        """Build a selector from a list of targets.
+
+        Each target is an object name (a string; ``class_name`` and ``field_name``/``field_index`` give the
+        rest) or a mapping with the keys ``class``, ``object``, ``field`` / ``field_index`` (missing keys
+        fall back to the arguments). Consecutive targets that share class and field are merged into one
+        :class:`FieldSelector` with a list of object names.
+        """
+        grouped: list[dict[str, Any]] = []
+        for t in targets:
+            spec = {"object": t} if isinstance(t, str) else dict(t)
+            cls_ = spec.get("class", spec.get("class_name", class_name))
+            fld = spec.get("field", spec.get("field_name", field_name))
+            idx = spec.get("field_index", field_index if fld is None else None)
+            if cls_ is None or (fld is None and idx is None):
+                raise ParameterError(f"target {t!r} needs a class and a field (or field_index)")
+            obj = spec.get("object", spec.get("object_name", "*"))
+            if grouped and (grouped[-1]["class"], grouped[-1]["field"], grouped[-1]["index"]) == (cls_, fld, idx) \
+                    and isinstance(grouped[-1]["objects"], list) and obj != "*":
+                grouped[-1]["objects"].append(obj)
+            else:
+                grouped.append({"class": cls_, "field": fld, "index": idx,
+                                "objects": [obj] if obj != "*" else "*", "where": spec.get("where")})
+        sels = [
+            FieldSelector(g["class"], g["objects"], g["field"], field_index=g["index"], where=g["where"])
+            for g in grouped
+        ]
+        return cls(sels, name=name)
+
+    @property
+    def default_name(self) -> str:
+        """Name used for a parameter that is not given one."""
+        if self._name:
+            return self._name
+        first = self.selectors[0].default_name
+        return first if len(self.selectors) == 1 else f"{first} (+{len(self.selectors) - 1} more)"
+
+    def targets(self, idf: IDF, idd: IDD) -> list[IDFObject]:
+        """Every object edited by this selector (objects reached by several members appear once)."""
+        seen: dict[int, IDFObject] = {}
+        for s in self.selectors:
+            if hasattr(s, "targets"):
+                for o in s.targets(idf, idd):
+                    seen.setdefault(id(o), o)
+        return list(seen.values())
+
+    def validate(self, idf: IDF, idd: IDD) -> int:
+        """Check every member; return the total number of objects. The error names the failing member."""
+        total = 0
+        for i, s in enumerate(self.selectors, 1):
+            try:
+                total += s.validate(idf, idd)
+            except ParameterError as e:
+                raise ParameterError(f"target {i} of {len(self.selectors)}: {e}") from None
+            except KeyError as e:
+                raise KeyError(f"target {i} of {len(self.selectors)} ({s!r}): {e.args[0] if e.args else e}") from None
+        return total
+
+    def apply(self, idf: IDF, value, idd: IDD) -> None:
+        """Write ``value`` in every place (in place)."""
+        for s in self.selectors:
+            s.apply(idf, value, idd)
+
+    def __repr__(self) -> str:
+        return f"MultiSelector({len(self.selectors)} selectors, first={self.selectors[0]!r})"
+
+
+def selector_from_spec(spec: Mapping[str, Any]) -> FieldSelector | MultiSelector:
+    """Selector from a configuration entry (the form used in YAML/JSON studies).
+
+    ``{class, object, field | field_index, where}`` gives a :class:`FieldSelector` (``object`` is ``"*"``
+    by default and may be a list of names). ``{targets: [...], class, field}`` gives a
+    :class:`MultiSelector`: each target is an object name or a mapping with its own ``class`` / ``object`` /
+    ``field`` / ``field_index``, falling back to the entry's ``class`` and ``field``.
+    """
+    if "targets" in spec:
+        return MultiSelector.from_targets(
+            spec["targets"], class_name=spec.get("class"), field_name=spec.get("field"),
+            field_index=spec.get("field_index"), name=spec.get("name"),
         )
+    if "class" not in spec:
+        raise ParameterError(f"a parameter needs 'class' (and 'field'), or 'targets': {dict(spec)}")
+    return FieldSelector(
+        spec["class"], spec.get("object", "*"), spec.get("field"),
+        field_index=spec.get("field_index"), where=spec.get("where"),
+    )
 
 
 class GenericSelector:

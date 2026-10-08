@@ -102,8 +102,9 @@ A list; each entry:
 |---|---|
 | `name` | unique name (default: derived from the selector) |
 | `type` | `range` (default if `min`/`max`), `integer`, `category` (default if `options`) |
-| `class`, `object`, `field` | what to change; `object` defaults to `"*"` (all objects); `field_index` can replace `field` |
+| `class`, `object`, `field` | what to change; `object` defaults to `"*"` (all objects) and may be a list of names; `field_index` can replace `field` |
 | `where` | `{field name: value}` filter on the objects |
+| `targets` | one parameter written in several places (a {class}`~bdopt.MultiSelector`): a list of object names, or of mappings with their own `class` / `object` / `field` / `field_index`; `class` and `field` of the entry are the defaults |
 | `min`, `max` | bounds of a range or integer parameter |
 | `options` | list of values of a category parameter |
 
@@ -115,6 +116,17 @@ parameters:
     field: Construction Name
     where: {Surface Type: Window}
     options: [single_glazing, double_glazing, triple_glazing]
+  - name: Glazing of the south facade          # one variable, three windows
+    class: FenestrationSurface:Detailed
+    field: Construction Name
+    targets: [South window 1, South window 2, South window 3]
+    options: [single_glazing, double_glazing, triple_glazing]
+  - name: Heating set point                    # one variable, several classes and fields
+    min: 18
+    max: 22
+    targets:
+      - {class: Schedule:Compact, object: Heating Z1, field_index: 5}
+      - {class: Schedule:Compact, object: Heating Z2, field_index: 5}
 ```
 
 ### `objectives`

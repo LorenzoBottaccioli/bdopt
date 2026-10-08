@@ -7,6 +7,9 @@ custom post-processing.
 
 from __future__ import annotations
 
+import functools
+import hashlib
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -38,6 +41,12 @@ class Objective:
         ``version`` (the EnergyPlus version) and ``idf`` (the model) let an objective request only what
         exists there, so that EnergyPlus has nothing to warn about."""
         return []
+
+    def cache_token(self) -> str:
+        """Extra text that goes into the result-cache key, for objectives whose value depends on code.
+
+        Empty for meters and variables (their name and options already identify the result)."""
+        return ""
 
 
 class MeterReader(Objective):
@@ -119,6 +128,34 @@ class FunctionReader(Objective):
     def idf_outputs(self, version=None, idf=None) -> list[tuple[str, ...]]:
         """The ``Output:*`` objects declared for the custom function."""
         return list(self.outputs)
+
+    def cache_token(self) -> str:
+        """Fingerprint of the function, so that editing it does not return results cached for the old code.
+
+        It hashes the source text (or, if that is unavailable, the bytecode and constants) and the default
+        argument values. Values the function captures from its environment (closures, globals) are NOT
+        tracked: change ``name`` or pass ``cache=False`` to the evaluator if they change."""
+        return function_fingerprint(self.func)
+
+
+def function_fingerprint(func: Callable) -> str:
+    """Stable hash of a callable's code (see :meth:`FunctionReader.cache_token`)."""
+    h = hashlib.sha256()
+    target = func.func if isinstance(func, functools.partial) else func
+    h.update(str(getattr(target, "__module__", None) or "").encode())  # None for exec()'d functions
+    h.update(str(getattr(target, "__qualname__", type(target).__qualname__)).encode())
+    try:
+        h.update(inspect.getsource(target).encode("utf-8", errors="replace"))
+    except (OSError, TypeError):
+        code = getattr(target, "__code__", None)
+        if code is not None:
+            h.update(code.co_code)
+            h.update(repr(code.co_consts).encode())
+            h.update(repr(code.co_names).encode())
+    h.update(repr(getattr(target, "__defaults__", None)).encode())
+    if isinstance(func, functools.partial):  # the bound arguments are part of the function
+        h.update(repr((func.args, sorted(func.keywords.items()))).encode())
+    return h.hexdigest()[:16]
 
 
 def as_objective(obj: str | Objective) -> Objective:

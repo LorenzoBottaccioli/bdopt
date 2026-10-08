@@ -177,6 +177,7 @@ class EnergyPlusEvaluator(Evaluator):
         self._signature = "|".join(
             f"{type(o).__name__}:{o.name}:{o.idf_outputs(self.eplus.version, self.idf)}:{getattr(o, 'unit', '')}:"
             f"{getattr(o, 'aggregate', '')}:{getattr(o, 'missing', '')}"
+            + (f":{token}" if (token := o.cache_token()) else "")  # '' for meters: existing caches stay valid
             for o in problem.objectives
         )
         if cache is True:

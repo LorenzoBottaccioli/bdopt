@@ -26,11 +26,11 @@ from .objectives import MeterReader, Objective, VariableReader
 from .optimize import ParetoFront, nsga2, nsga3
 from .parameters import (
     CategoryParameter,
-    FieldSelector,
     IntegerParameter,
     Parameter,
     ParameterError,
     RangeParameter,
+    selector_from_spec,
 )
 from .problem import Problem
 from .sampling import lhs_unit
@@ -65,11 +65,7 @@ def parameter_from_config(spec: dict) -> Parameter:
         vd = CategoryParameter(spec["options"])
     else:
         raise ParameterError(f"unknown parameter type {kind!r}")
-    sel = FieldSelector(
-        spec["class"], spec.get("object", "*"), spec.get("field"),
-        field_index=spec.get("field_index"), where=spec.get("where"),
-    )
-    return Parameter(sel, vd, name=spec.get("name"))
+    return Parameter(selector_from_spec(spec), vd, name=spec.get("name"))
 
 
 def objective_from_config(spec: str | dict) -> str | Objective:

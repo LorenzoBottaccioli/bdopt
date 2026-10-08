@@ -32,6 +32,9 @@ FieldSelector("Material", "_InsulationEX_.01", "Thickness")
 # every object of a class
 FieldSelector("Lights", "*", "Watts per Zone Floor Area")
 
+# exactly these objects: a list of names (every listed name must exist in the model)
+FieldSelector("FenestrationSurface:Detailed", ["South window", "East window"], "Construction Name")
+
 # only some objects: `where` is {field name: required value} or a function of the object
 FieldSelector("FenestrationSurface:Detailed", "*", "Construction Name",
               where={"Surface Type": "Window"})
@@ -54,7 +57,34 @@ KeyError: field 'Lighting Levl' does not exist in class 'Lights' of EnergyPlus 9
 ParameterError: selector 'Lights:NO SUCH LIGHT:Lighting Level' matches no object in the model (class 'Lights', object 'NO SUCH LIGHT', where=None)
 ```
 
-For anything a field cannot express (geometry, schedules, a value written in several places) use a
+### One variable, several places
+
+A {class}`~bdopt.MultiSelector` writes the same value in several places, which can be different objects,
+classes and fields: one thermostat set point written into the `Field 4` of several `Schedule:Compact`
+objects, one glazing type written into every window of a facade. The design table has **one column** for it,
+so samplers, surrogates and optimizers see one variable.
+
+```python
+from bdopt import MultiSelector
+
+heating = MultiSelector([
+    FieldSelector("Schedule:Compact", "Heating Z1", field_index=5),
+    FieldSelector("Schedule:Compact", "Heating Z2", field_index=5),
+    FieldSelector("ThermostatSetpoint:SingleHeating", "*", "Setpoint Temperature Schedule Name"),
+])
+
+# or from a list of targets: strings are object names, mappings may override class / field
+glazing = MultiSelector.from_targets(
+    ["South window", "East window", "North window"],
+    class_name="FenestrationSurface:Detailed", field_name="Construction Name",
+)
+```
+
+`from_targets` merges consecutive targets that share class and field into one {class}`~bdopt.FieldSelector` with
+a list of names. A typo is reported when the evaluator is created and names the failing target
+(`target 2 of 3: ...`). Targets reached twice are written twice with the same value, which does no harm.
+
+For anything a field cannot express (geometry, a computed value) use a
 {class}`~bdopt.GenericSelector`, a function of the model and the value:
 
 ```python
@@ -93,8 +123,9 @@ be written as a `(min, max)` tuple or a list of options.
 
 :::{admonition} One parameter, several objects
 :class: tip
-A selector with `"*"` (or a `where`) writes the *same* value into every object it matches: one design variable
-for all windows. If you want an independent variable per window, create one {class}`~bdopt.Parameter` per
+A selector with `"*"`, a `where`, or a list of object names writes the *same* value into every object it
+matches: one design variable for all windows. Use a {class}`~bdopt.MultiSelector` when the places differ in
+class or field. If you want an independent variable per window, create one {class}`~bdopt.Parameter` per
 window with a distinct `name`; the dimension of the problem grows accordingly.
 :::
 

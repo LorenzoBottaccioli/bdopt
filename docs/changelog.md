@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+* {class}`~bdopt.MultiSelector`: one design variable that writes the same value in several objects, classes and
+  fields (one column in the design table), with `MultiSelector.from_targets`. YAML/JSON studies get the same through
+  `targets:`.
+* {class}`~bdopt.FieldSelector` and {meth}`IDF.find <bdopt.IDF.find>` accept a list of object names. Every listed
+  name must exist in the model: a typo is an error, not a smaller selection.
+* The result cache of a custom objective ({class}`~bdopt.FunctionReader`) now depends on the code of its function:
+  editing the function no longer returns results cached for the old one. Meters and variables keep their
+  cache keys, so existing caches stay valid.
+
 ## 0.1.0
 
 First release.
