@@ -132,3 +132,69 @@ def test_torch_surrogates_with_uncertainty(data, kind):
     assert std.shape == (300, 2) and (std > 0).all()
     m2 = m.clone().fit(train, pr)                      # reproducible for a fixed seed
     assert np.allclose(m.predict(test).to_numpy(), m2.predict(test).to_numpy(), atol=1e-6)
+
+
+NEW_ACCURACY = {  # minimum R^2 on the smooth analytic problem, 60 training points
+    "decision_tree": 0.5, "hist_gradient_boosting": 0.8, "adaboost": 0.75, "lasso_polynomial": 0.8, "pce": 0.75,
+    "elm": 0.75, "universal_kriging": 0.9, "bagging": 0.75, "stacking": 0.85,
+}
+
+
+@pytest.mark.parametrize("kind", sorted(NEW_ACCURACY))
+def test_new_sklearn_surrogates_learn_the_response(data, kind):
+    from bdopt.surrogate import make_surrogate
+
+    pr, train, test = data
+    m = make_surrogate(kind).fit(train, pr)
+    assert m.score(test)["r2"].min() > NEW_ACCURACY[kind], m.score(test)
+    assert (m.predict_unit_std(pr.encode(test)) is not None) == m.has_uncertainty
+
+
+@pytest.mark.parametrize("kind", ["lightgbm", "xgboost"])
+def test_optional_boosting_libraries(data, kind):
+    pytest.importorskip(kind)
+    from bdopt.surrogate import make_surrogate
+
+    pr, train, test = data
+    assert make_surrogate(kind).fit(train, pr).score(test)["r2"].min() > 0.75
+
+
+@pytest.mark.parametrize("kind", ["sparse_gp", "deep_ensemble"])
+def test_new_torch_surrogates(data, kind):
+    pytest.importorskip("torch")
+    from bdopt.surrogate import make_surrogate
+
+    pr, train, test = data
+    m = make_surrogate(kind).fit(train, pr)
+    assert m.score(test)["r2"].min() > 0.75, m.score(test)
+    std = m.predict_unit_std(pr.encode(test))
+    assert std.shape == (300, 2) and (std > 0).all()
+
+
+def test_bagging_gives_uncertainty_to_a_model_without_it(data):
+    from bdopt.surrogate import BaggingSurrogate, KernelRidgeSurrogate
+
+    pr, train, test = data
+    m = BaggingSurrogate(KernelRidgeSurrogate(), n_members=6).fit(train, pr)
+    std = m.predict_unit_std(pr.encode(test))
+    assert std.shape == (300, 2) and (std > 0).all()
+
+
+def test_pce_reports_first_order_sensitivity(data):
+    from bdopt.surrogate import PCESurrogate
+
+    pr, train, _ = data
+    m = PCESurrogate().fit(train, pr)
+    assert m.first_order_indices_.shape == (2, 4)
+    assert (m.first_order_indices_ >= 0).all() and (m.first_order_indices_.sum(axis=1) <= 1 + 1e-9).all()
+
+
+def test_sparse_gp_with_few_points_equals_the_exact_gp(data):
+    pytest.importorskip("torch")
+    from bdopt.surrogate import GPSurrogate, SparseGPSurrogate
+
+    pr, train, test = data
+    small = train.iloc[:30]
+    sparse = SparseGPSurrogate(n_inducing=100).fit(small, pr).predict(test).to_numpy()
+    exact = GPSurrogate().fit(small, pr).predict(test).to_numpy()
+    assert np.sqrt(((sparse - exact) ** 2).mean()) / exact.std() < 0.2

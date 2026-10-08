@@ -104,3 +104,61 @@ def factorial(problem: Problem, levels: int | list[int] = 3) -> pd.DataFrame:
     grid = np.array(list(itertools.product(*axes)))
     df = problem.decode(grid)
     return df[problem.feasible(df)].reset_index(drop=True)
+
+
+def halton(problem: Problem, n: int, seed=None, scramble: bool = True) -> pd.DataFrame:
+    """``n`` (scrambled) Halton points: a low-discrepancy sequence that can be extended later."""
+    rng = _rng(seed)
+    sampler = qmc.Halton(d=problem.n_var, scramble=scramble, seed=int(rng.integers(2**31)))
+    return problem.decode(_unit_points(problem, n, sampler.random))
+
+
+def hammersley(problem: Problem, n: int) -> pd.DataFrame:
+    """``n`` Hammersley points: ``i / n`` in the first coordinate, the Halton sequence (without its first
+    dimension) in the others. Better spread than Halton for a *known* ``n``, but not extendable."""
+    d = problem.n_var
+    if d == 1:
+        return problem.decode((np.arange(n)[:, None] + 0.5) / n)
+    rest = qmc.Halton(d=d - 1, scramble=False).random(n + 1)[1:] if n else np.empty((0, d - 1))
+    U = np.column_stack([(np.arange(n) + 0.5) / n, rest])
+    return problem.decode(U)
+
+
+def maximin_lhs(problem: Problem, n: int, seed=None, trials: int = 200) -> pd.DataFrame:
+    """Best of ``trials`` random Latin hypercubes by the maximin criterion (largest smallest pairwise distance)."""
+    rng = _rng(seed)
+    d = problem.n_var
+    best, best_score = None, -1.0
+    for _ in range(trials):
+        perms = np.column_stack([rng.permutation(n) for _ in range(d)])
+        U = (perms + rng.random((n, d))) / n
+        D = np.sqrt(((U[:, None, :] - U[None, :, :]) ** 2).sum(-1))
+        np.fill_diagonal(D, np.inf)
+        if D.min() > best_score:
+            best, best_score = U, float(D.min())
+    return problem.decode(best)
+
+
+def fps(problem: Problem, n: int, seed=None, pool: int = 20000) -> pd.DataFrame:
+    """Farthest-point sampling: start from a random point, repeatedly add the pool point farthest from all chosen."""
+    rng = _rng(seed)
+    d = problem.n_var
+    C = rng.random((pool, d))
+    chosen = [int(rng.integers(pool))]
+    dmin = np.sqrt(((C - C[chosen[0]]) ** 2).sum(axis=1))
+    for _ in range(n - 1):
+        j = int(np.argmax(dmin))
+        chosen.append(j)
+        dmin = np.minimum(dmin, np.sqrt(((C - C[j]) ** 2).sum(axis=1)))
+    return problem.decode(problem.snap(C[chosen]))
+
+
+def cvt(problem: Problem, n: int, seed=None, pool: int = 20000) -> pd.DataFrame:
+    """Centroidal Voronoi tessellation: the ``n`` centroids of a k-means clustering of uniform points (each point
+    sits at the centre of mass of its own Voronoi cell)."""
+    from sklearn.cluster import KMeans
+
+    rng = _rng(seed)
+    C = rng.random((pool, problem.n_var))
+    km = KMeans(n_clusters=n, n_init=3, random_state=int(rng.integers(2**31))).fit(C)
+    return problem.decode(problem.snap(km.cluster_centers_))

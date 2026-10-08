@@ -1,5 +1,13 @@
 # Adaptive sampling
 
+```{admonition} What to expect
+:class: note
+On the platform's seven EnergyPlus models (smooth responses, 35 training simulations) no adaptive strategy beat a plain
+Latin hypercube with a Gaussian process, and the literature reports small or budget-dependent gains
+({doc}`../literature`, {doc}`../benchmarks`). Adaptive sampling helps with a localised nonlinearity, very small budgets
+or many parameters; its practical value is monitoring convergence and stopping. Compare strategies on your own model.
+```
+
 A fixed design (say 60 Latin-hypercube simulations) has to guess how many simulations are enough.
 {class}`~bdopt.adaptive.AdaptiveSampler` starts from a small Latin hypercube plus a held-out test set, then adds
 simulations where the surrogate needs them and stops when the test error is small enough (or a budget is reached).
@@ -27,6 +35,8 @@ result = sampler.run(n_initial=20, n_test=5, max_iter=40, batch=1, tol=0.05, max
 | `batch` | new simulations per iteration (they can run in parallel) | `1` |
 | `tol` | stop when `scaled_rmse` is at or below this | `0.05` |
 | `max_evaluations` | stop after this many simulations in total (initial + test + adaptive) | none |
+| `patience`, `min_improvement` | stop (`"plateau"`) when the best `scaled_rmse` of the last `patience` iterations improved by less than the fraction `min_improvement` over the best before them | none, `0.02` |
+| `max_std` | stop (`"uncertainty"`) when the largest predictive standard deviation of the surrogate (standardised, averaged over objectives, over 2000 random points) is at most this; needs a surrogate with uncertainty | none |
 | `initial_data`, `test_data` | tables of already simulated designs to reuse instead of simulating new ones | none |
 | `checkpoint_dir` | write `train.csv`, `test.csv`, `history.csv` after every iteration | none |
 | `callback` | `callback(iteration, history_row)` after every iteration | none |
@@ -39,13 +49,29 @@ result = sampler.run(n_initial=20, n_test=5, max_iter=40, batch=1, tol=0.05, max
 * `history`: one row per iteration with `iteration`, `n_train`, `n_evaluations`, `scaled_rmse`, `elapsed_s`, and
   per objective `rmse_scaled:<name>` and `r2:<name>`;
 * `surrogate`: the model fitted on `data` (a {class}`~bdopt.surrogate.GPSurrogate` unless you passed another);
-* `converged`, `stop_reason` (`"tolerance"`, `"max_iter"` or `"max_evaluations"`), `n_evaluations`;
+* `converged`, `stop_reason` (`"tolerance"`, `"plateau"`, `"uncertainty"`, `"max_iter"` or `"max_evaluations"`), `n_evaluations`;
 * `failed`: designs whose simulation failed; `extra`: method-specific objects.
 
 ```{image} ../_static/img/convergence.png
 :alt: scaled RMSE against number of training points
 :width: 60%
 ```
+
+## Using it as a stopping rule
+
+For smooth building responses the loop's best use is to answer *how many simulations are enough*. Run it once with a
+generous budget, then:
+
+```python
+from bdopt.adaptive import suggest_budget
+
+suggest_budget(result.history)
+```
+
+returns, for each rule (test error at 0.1, 0.05, 0.02 and 0.01; a plateau; predictive uncertainty at 0.5, 0.3 and 0.2
+when the surrogate has one), the iteration, training points and total simulations at which it fired. Choose the knee of
+the curve and use that design size in the next study, or set `tol`, `patience` or `max_std` so the loop stops by
+itself. `history` also keeps `max_std` per iteration whenever the surrogate has an uncertainty estimate.
 
 ## How it works
 

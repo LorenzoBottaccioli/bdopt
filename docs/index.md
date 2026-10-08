@@ -9,9 +9,10 @@ as a plain Python library (no Docker needed).
 :width: 100%
 ```
 
-*Same number of simulations (50). Left: a Latin hypercube. Right: adaptive sampling, which puts the
-later simulations (green, yellow) on the narrow feature of the response. Produced by
-`docs/make_figures.py`.*
+*Same number of simulations (50), on an analytic response chosen to have a narrow feature, where adaptive sampling
+is expected to help. Left: a Latin hypercube. Right: adaptive sampling, which puts the later simulations (green,
+yellow) on the feature. On the platform's smooth EnergyPlus models it did not beat the Latin hypercube; see
+{doc}`benchmarks`. Produced by `docs/make_figures.py`.*
 
 ::::{grid} 1 2 2 3
 :gutter: 3
@@ -89,6 +90,7 @@ guide/index
 tutorials/index
 api/index
 benchmarks
+literature
 faq
 contributing
 changelog

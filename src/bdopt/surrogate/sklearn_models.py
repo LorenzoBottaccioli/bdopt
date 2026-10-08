@@ -7,7 +7,13 @@ import warnings
 import numpy as np
 import pandas as pd
 from scipy.interpolate import RBFInterpolator
-from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor, RandomForestRegressor
+from sklearn.ensemble import (
+    AdaBoostRegressor,
+    ExtraTreesRegressor,
+    GradientBoostingRegressor,
+    HistGradientBoostingRegressor,
+    RandomForestRegressor,
+)
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import (
@@ -18,14 +24,15 @@ from sklearn.gaussian_process.kernels import (
     WhiteKernel,
 )
 from sklearn.kernel_ridge import KernelRidge
-from sklearn.linear_model import RidgeCV
+from sklearn.linear_model import ElasticNetCV, LassoLarsCV, RidgeCV
 from sklearn.model_selection import GridSearchCV, cross_val_score
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import PolynomialFeatures
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.svm import SVR
+from sklearn.tree import DecisionTreeRegressor
 
 from .base import Surrogate
 
@@ -398,3 +405,342 @@ class AutoSurrogate(Surrogate):
         if not self.model_.has_uncertainty:
             return None
         return self.model_._predict_std(U)
+
+
+# ---------------------------------------------------------------------------------------------
+# more tree models
+# ---------------------------------------------------------------------------------------------
+
+
+class DecisionTreeSurrogate(Surrogate):
+    """A single regression tree with depth and leaf size chosen by cross-validation (the weakest common baseline:
+    piecewise constant)."""
+
+    def __init__(self, max_depths: tuple[int, ...] = (3, 5, 8, 12), min_samples_leaf: tuple[int, ...] = (1, 2, 4),
+                 cv: int = 3, random_state: int = 0):
+        self.max_depths, self.min_samples_leaf, self.cv = tuple(max_depths), tuple(min_samples_leaf), cv
+        self.random_state = random_state
+
+    def _fit(self, U, Z):
+        grid = GridSearchCV(
+            DecisionTreeRegressor(random_state=self.random_state),
+            {"max_depth": list(self.max_depths), "min_samples_leaf": list(self.min_samples_leaf)},
+            cv=_cv(len(U), self.cv),
+        )
+        self.model_ = grid.fit(U, Z).best_estimator_
+
+    def _predict(self, U):
+        return self.model_.predict(U).reshape(len(U), -1)
+
+
+class HistGradientBoostingSurrogate(Surrogate):
+    """scikit-learn histogram gradient boosting, one model per objective (fast, handles many points)."""
+
+    def __init__(self, max_iter: int = 300, learning_rate: float = 0.05, max_depth: int | None = 4,
+                 min_samples_leaf: int = 3, random_state: int = 0):
+        self.max_iter, self.learning_rate, self.max_depth = max_iter, learning_rate, max_depth
+        self.min_samples_leaf, self.random_state = min_samples_leaf, random_state
+
+    def _fit(self, U, Z):
+        self.models_ = [
+            HistGradientBoostingRegressor(
+                max_iter=self.max_iter, learning_rate=self.learning_rate, max_depth=self.max_depth,
+                min_samples_leaf=min(self.min_samples_leaf, max(1, len(U) // 3)), random_state=self.random_state,
+            ).fit(U, Z[:, j])
+            for j in range(Z.shape[1])
+        ]
+
+    def _predict(self, U):
+        return np.column_stack([m.predict(U) for m in self.models_])
+
+
+class AdaBoostSurrogate(Surrogate):
+    """AdaBoost.R2 over depth-3 trees, one model per objective."""
+
+    def __init__(self, n_estimators: int = 200, learning_rate: float = 0.5, max_depth: int = 3, random_state: int = 0):
+        self.n_estimators, self.learning_rate, self.max_depth = n_estimators, learning_rate, max_depth
+        self.random_state = random_state
+
+    def _fit(self, U, Z):
+        base = AdaBoostRegressor(
+            estimator=DecisionTreeRegressor(max_depth=self.max_depth), n_estimators=self.n_estimators,
+            learning_rate=self.learning_rate, random_state=self.random_state,
+        )
+        self.model_ = MultiOutputRegressor(base).fit(U, Z)
+
+    def _predict(self, U):
+        return self.model_.predict(U).reshape(len(U), -1)
+
+
+class LightGBMSurrogate(Surrogate):
+    """LightGBM gradient boosting, one model per objective. Needs ``pip install 'bdopt[ml]'``."""
+
+    def __init__(self, n_estimators: int = 300, learning_rate: float = 0.05, num_leaves: int = 8,
+                 min_child_samples: int = 3, random_state: int = 0):
+        self.n_estimators, self.learning_rate, self.num_leaves = n_estimators, learning_rate, num_leaves
+        self.min_child_samples, self.random_state = min_child_samples, random_state
+
+    def _fit(self, U, Z):
+        try:
+            from lightgbm import LGBMRegressor
+        except ImportError as e:  # pragma: no cover
+            raise ImportError("LightGBMSurrogate needs lightgbm: pip install 'bdopt[ml]'") from e
+        self.models_ = [
+            LGBMRegressor(
+                n_estimators=self.n_estimators, learning_rate=self.learning_rate, num_leaves=self.num_leaves,
+                min_child_samples=min(self.min_child_samples, max(2, len(U) // 3)), random_state=self.random_state,
+                verbose=-1, n_jobs=1,
+            ).fit(U, Z[:, j])
+            for j in range(Z.shape[1])
+        ]
+
+    def _predict(self, U):
+        return np.column_stack([m.predict(U) for m in self.models_])
+
+
+class XGBoostSurrogate(Surrogate):
+    """XGBoost gradient boosting, one model per objective. Needs ``pip install 'bdopt[ml]'``."""
+
+    def __init__(self, n_estimators: int = 300, learning_rate: float = 0.05, max_depth: int = 3,
+                 subsample: float = 0.8, random_state: int = 0):
+        self.n_estimators, self.learning_rate, self.max_depth = n_estimators, learning_rate, max_depth
+        self.subsample, self.random_state = subsample, random_state
+
+    def _fit(self, U, Z):
+        try:
+            from xgboost import XGBRegressor
+        except ImportError as e:  # pragma: no cover
+            raise ImportError("XGBoostSurrogate needs xgboost: pip install 'bdopt[ml]'") from e
+        self.models_ = [
+            XGBRegressor(
+                n_estimators=self.n_estimators, learning_rate=self.learning_rate, max_depth=self.max_depth,
+                subsample=self.subsample, random_state=self.random_state, n_jobs=1,
+            ).fit(U, Z[:, j])
+            for j in range(Z.shape[1])
+        ]
+
+    def _predict(self, U):
+        return np.column_stack([m.predict(U) for m in self.models_])
+
+
+# ---------------------------------------------------------------------------------------------
+# regularised polynomial families
+# ---------------------------------------------------------------------------------------------
+
+
+class LassoPolynomialSurrogate(Surrogate):
+    """Polynomial (degree up to ``max_degree``, interactions of at most ``max_interaction`` parameters) with an
+    elastic-net penalty chosen by cross-validation: a sparse response surface that stays usable with many parameters."""
+
+    def __init__(self, max_degree: int = 3, max_interaction: int = 2, l1_ratio: float = 0.9, cv: int = 5):
+        self.max_degree, self.max_interaction, self.l1_ratio, self.cv = max_degree, max_interaction, l1_ratio, cv
+
+    def _terms(self, d: int):
+        return _poly_terms(d, self.max_degree, self.max_interaction)
+
+    def _features(self, U):
+        return _monomials(U, self.terms_)
+
+    def _fit(self, U, Z):
+        self.terms_ = self._terms(U.shape[1])
+        F = self._features(U)
+        self.scaler_ = StandardScaler().fit(F)
+        Fs = self.scaler_.transform(F)
+        self.models_ = []
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for j in range(Z.shape[1]):
+                self.models_.append(
+                    ElasticNetCV(l1_ratio=self.l1_ratio, cv=_cv(len(U), self.cv), max_iter=20000, alphas=60).fit(Fs, Z[:, j])
+                )
+
+    def _predict(self, U):
+        Fs = self.scaler_.transform(self._features(U))
+        return np.column_stack([m.predict(Fs) for m in self.models_])
+
+
+def _poly_terms(d: int, max_degree: int, max_interaction: int):
+    """Exponent vectors of all monomials with total degree <= ``max_degree`` involving <= ``max_interaction`` variables
+    (the constant term is left out)."""
+    import itertools
+
+    terms = []
+    for k in range(1, max_interaction + 1):
+        for idx in itertools.combinations(range(d), k):
+            for degs in itertools.product(range(1, max_degree + 1), repeat=k):
+                if sum(degs) <= max_degree:
+                    terms.append(tuple(zip(idx, degs, strict=True)))
+    return terms
+
+
+def _monomials(U, terms):
+    F = np.empty((len(U), len(terms)))
+    for j, t in enumerate(terms):
+        v = np.ones(len(U))
+        for i, p in t:
+            v = v * U[:, i] ** p
+        F[:, j] = v
+    return F
+
+
+class PCESurrogate(Surrogate):
+    """Sparse polynomial chaos expansion: orthonormal Legendre polynomials on the unit cube (total degree up to
+    ``max_degree``, interactions of at most ``max_interaction`` parameters), coefficients by least-angle regression with
+    the number of terms chosen by cross-validation. The expansion also gives Sobol' sensitivity indices through
+    ``first_order_indices_``."""
+
+    def __init__(self, max_degree: int = 3, max_interaction: int = 2, cv: int = 5):
+        self.max_degree, self.max_interaction, self.cv = max_degree, max_interaction, cv
+
+    @staticmethod
+    def _legendre(x, p):
+        from numpy.polynomial import legendre
+
+        c = np.zeros(p + 1)
+        c[p] = 1.0
+        return legendre.legval(2 * x - 1, c) * np.sqrt(2 * p + 1)
+
+    def _basis(self, U):
+        F = np.empty((len(U), len(self.terms_)))
+        for j, t in enumerate(self.terms_):
+            v = np.ones(len(U))
+            for i, p in t:
+                v = v * self._legendre(U[:, i], p)
+            F[:, j] = v
+        return F
+
+    def _fit(self, U, Z):
+        self.terms_ = _poly_terms(U.shape[1], self.max_degree, self.max_interaction)
+        F = self._basis(U)
+        self.models_ = []
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for j in range(Z.shape[1]):
+                self.models_.append(LassoLarsCV(cv=_cv(len(U), self.cv), max_n_alphas=200).fit(F, Z[:, j]))
+        d = U.shape[1]
+        first = np.zeros((Z.shape[1], d))
+        for j, m in enumerate(self.models_):
+            var = (m.coef_**2).sum()
+            for c, t in zip(m.coef_, self.terms_, strict=True):
+                if len(t) == 1 and var > 0:
+                    first[j, t[0][0]] += c**2 / var
+        self.first_order_indices_ = first
+
+    def _predict(self, U):
+        F = self._basis(U)
+        return np.column_stack([m.predict(F) for m in self.models_])
+
+
+# ---------------------------------------------------------------------------------------------
+# extreme learning machine, universal kriging, ensembles
+# ---------------------------------------------------------------------------------------------
+
+
+class ELMSurrogate(Surrogate):
+    """Extreme learning machine: a random, fixed tanh hidden layer and ridge-regressed output weights (no gradient
+    training). ``n_ensemble`` independent machines give a mean and a spread."""
+
+    def __init__(self, n_hidden: int = 200, alphas: tuple[float, ...] = (1e-6, 1e-4, 1e-2, 1e-1, 1.0, 10.0),
+                 n_ensemble: int = 10, random_state: int = 0):
+        self.n_hidden, self.alphas, self.n_ensemble, self.random_state = n_hidden, tuple(alphas), n_ensemble, random_state
+        self.has_uncertainty = n_ensemble > 1
+
+    def _fit(self, U, Z):
+        rng = np.random.default_rng(self.random_state)
+        d = U.shape[1]
+        self.members_ = []
+        for _ in range(self.n_ensemble):
+            W = rng.normal(0, 2.0, (d, self.n_hidden))
+            b = rng.uniform(-2, 2, self.n_hidden)
+            H = np.tanh(U @ W + b)
+            ridge = RidgeCV(alphas=self.alphas).fit(H, Z)
+            self.members_.append((W, b, ridge))
+
+    def _members(self, U):
+        return np.stack([r.predict(np.tanh(U @ W + b)).reshape(len(U), -1) for W, b, r in self.members_])
+
+    def _predict(self, U):
+        return self._members(U).mean(axis=0)
+
+    def _predict_std(self, U):
+        return self._members(U).std(axis=0) if self.n_ensemble > 1 else None
+
+
+class UniversalKrigingSurrogate(Surrogate):
+    """Universal kriging: a linear trend in all parameters plus a Gaussian process on the residuals. Keeps the
+    Gaussian process' uncertainty and extrapolates better than a zero-mean GP when the response has a global trend."""
+
+    has_uncertainty = True
+
+    def __init__(self, n_restarts: int = 8, random_state: int = 0):
+        self.n_restarts, self.random_state = n_restarts, random_state
+
+    def _fit(self, U, Z):
+        self.trend_ = RidgeCV(alphas=(1e-6, 1e-3, 1e-1, 1.0)).fit(U, Z)
+        resid = Z - self.trend_.predict(U).reshape(len(U), -1)
+        self.gp_ = GPSurrogate(n_restarts=self.n_restarts, random_state=self.random_state).fit_unit(U, resid)
+
+    def _predict(self, U):
+        return self.trend_.predict(U).reshape(len(U), -1) + self.gp_.predict_unit(U)
+
+    def _predict_std(self, U):
+        return self.gp_.predict_unit_std(U)
+
+
+class BaggingSurrogate(Surrogate):
+    """Bootstrap ensemble of any surrogate: ``n_members`` copies of ``base`` fitted on resampled data. The mean is the
+    prediction and the spread between members an uncertainty estimate, so models without one (kernel ridge, RBF,
+    polynomial, ...) can drive uncertainty-based sampling and query by committee."""
+
+    has_uncertainty = True
+
+    def __init__(self, base: Surrogate | None = None, n_members: int = 10, random_state: int = 0):
+        self.base, self.n_members, self.random_state = base, n_members, random_state
+
+    def _fit(self, U, Z):
+        base = self.base if self.base is not None else KernelRidgeSurrogate()
+        rng = np.random.default_rng(self.random_state)
+        n = len(U)
+        self.members_ = []
+        for _ in range(self.n_members):
+            for _try in range(10):
+                idx = rng.integers(0, n, n)
+                if len(np.unique(idx)) >= max(4, n // 2):
+                    break
+            self.members_.append(base.clone().fit_unit(U[idx], Z[idx], self.problem))
+
+    def _stack(self, U):
+        return np.stack([m.predict_unit(U) for m in self.members_])
+
+    def _predict(self, U):
+        return self._stack(U).mean(axis=0)
+
+    def _predict_std(self, U):
+        return self._stack(U).std(axis=0)
+
+
+class StackingSurrogate(Surrogate):
+    """Stacked generalisation: out-of-fold predictions of several base surrogates are combined with non-negative
+    least-squares weights (per objective, summing to about one); the bases are then refitted on all the data."""
+
+    def __init__(self, bases: tuple[Surrogate, ...] | None = None, cv: int = 5, random_state: int = 0):
+        self.bases, self.cv, self.random_state = bases, cv, random_state
+
+    def _fit(self, U, Z):
+        from scipy.optimize import nnls
+        from sklearn.model_selection import KFold
+
+        bases = list(self.bases) if self.bases else [GPSurrogate(), KernelRidgeSurrogate(), RBFSurrogate(), SVRSurrogate()]
+        oof = np.full((len(bases), *Z.shape), np.nan)
+        for tr, te in KFold(_cv(len(U), self.cv), shuffle=True, random_state=self.random_state).split(U):
+            for b, base in enumerate(bases):
+                oof[b, te] = base.clone().fit_unit(U[tr], Z[tr], self.problem).predict_unit(U[te])
+        self.weights_ = np.zeros((Z.shape[1], len(bases)))
+        for j in range(Z.shape[1]):
+            w, _ = nnls(oof[:, :, j].T, Z[:, j])
+            self.weights_[j] = w / w.sum() if w.sum() > 0 else np.full(len(bases), 1 / len(bases))
+        self.members_ = [base.clone().fit_unit(U, Z, self.problem) for base in bases]
+
+    def _predict(self, U):
+        P = np.stack([m.predict_unit(U) for m in self.members_])  # (bases, n, objectives)
+        return np.einsum("jb,bnj->nj", self.weights_, P)

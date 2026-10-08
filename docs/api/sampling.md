@@ -13,6 +13,11 @@ Fixed designs
 .. autofunction:: sobol
 .. autofunction:: random
 .. autofunction:: factorial
+.. autofunction:: halton
+.. autofunction:: hammersley
+.. autofunction:: maximin_lhs
+.. autofunction:: fps
+.. autofunction:: cvt
 
 .. currentmodule:: bdopt.adaptive
 
@@ -21,6 +26,7 @@ Adaptive sampling
 
 .. autoclass:: AdaptiveSampler
 .. autoclass:: AdaptiveResult
+.. autofunction:: suggest_budget
 
 .. py:data:: METHODS
    :module: bdopt.adaptive
@@ -42,4 +48,19 @@ Infill criteria
 .. autofunction:: propose_gp_variance
 .. autofunction:: propose_nipv
 .. autofunction:: propose_latin_hypercube
+
+.. currentmodule:: bdopt.adaptive.criteria
+
+.. autofunction:: propose_qbc
+.. autofunction:: propose_loocv
+.. autofunction:: propose_lipschitz
+.. autofunction:: propose_idw
+.. autofunction:: propose_greedy
+.. autofunction:: propose_cvt
+.. autofunction:: propose_fisher_information
+.. autofunction:: propose_acquisition
+.. autofunction:: propose_soas
+.. autofunction:: propose_sequence
+.. autofunction:: propose_mixed
+.. autofunction:: propose_error_window
 ```

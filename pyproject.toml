@@ -29,7 +29,8 @@ dependencies = [
 torch = ["torch>=2.0"]
 viz = ["matplotlib>=3.6"]
 yaml = ["pyyaml>=6"]
-all = ["bdopt[torch,viz,yaml]"]
+ml = ["lightgbm>=4", "xgboost>=2"]
+all = ["bdopt[torch,viz,yaml,ml]"]
 docs = ["sphinx>=7", "furo", "myst-nb", "sphinx-copybutton", "sphinx-design", "bdopt[viz]"]
 dev = ["pytest>=7", "pytest-cov", "ruff", "nbformat", "nbclient", "ipykernel", "bdopt[all]"]
 

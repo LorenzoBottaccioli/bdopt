@@ -128,6 +128,15 @@ the loop stop by itself, learning how many simulations were enough.'''),
 
 fig = viz.convergence(result.history)
 plt.show()'''),
+    md('''## How many simulations were enough?
+
+The run above used a fixed budget (`tol=0`). {func}`~bdopt.adaptive.suggest_budget` reads off its history the point
+at which each stopping rule would have fired: the test error reaching a level, a plateau of the error, or (with a
+surrogate that has uncertainty) the largest predictive deviation falling below a threshold. This is the practical
+use of the loop: run it once with a generous budget, read the knee of the curve, and use that size in the next study.'''),
+    code('''from bdopt.adaptive import suggest_budget
+
+suggest_budget(result.history, tols=(0.3, 0.2, 0.1, 0.05), patience=4)'''),
     md('''## What to take away
 
 * Both surrogates used 50 training simulations; the numbers above are what each achieved on 2000 unseen points.

@@ -14,7 +14,7 @@ from ..evaluator import Evaluator
 from ..problem import Problem
 from ..sampling import lhs_unit
 from ..surrogate import GPSurrogate, Surrogate
-from . import designs
+from . import criteria, designs
 
 METHODS = (
     "flola_voronoi",
@@ -24,6 +24,23 @@ METHODS = (
     "probabilistic",
     "gp_variance",
     "nipv",
+    "qbc",
+    "loocv",
+    "lipschitz",
+    "idw",
+    "greedy",
+    "cvt",
+    "fisher_information",
+    "expected_improvement",
+    "probability_improvement",
+    "lcb",
+    "ucb",
+    "sample_min",
+    "soas",
+    "sobol_seq",
+    "halton",
+    "mixed",
+    "error_window",
     "latin_hypercube",
     "random",
 )
@@ -34,7 +51,7 @@ class AdaptiveResult:
     """Outcome of :meth:`AdaptiveSampler.run`.
 
     ``data``/``test`` are tables of parameters + objectives in real units, ``history`` has one row per
-    iteration (``scaled_rmse`` is the stopping metric: test RMSE in units of the std of each
+    iteration (``scaled_rmse`` is the main stopping metric: test RMSE in units of the std of each
     objective over the initial samples, so that objectives of different size weigh the same), ``surrogate`` is fitted on
     ``data``.
     """
@@ -69,8 +86,12 @@ class AdaptiveSampler:
         ``'lola_voronoi'``, ``'cv_voronoi'`` (cross-validation Voronoi), ``'voronoi'`` (pure
         exploration), ``'probabilistic'`` (largest predictive standard deviation, found by differential
         evolution), ``'gp_variance'`` (same on random candidates), ``'nipv'`` (negative integrated
-        posterior variance; needs a :class:`~bdopt.surrogate.GPSurrogate`), ``'latin_hypercube'``
-        (maximin space filling) or ``'random'`` (baseline). See ``bdopt.adaptive.designs``.
+        posterior variance; needs a :class:`~bdopt.surrogate.GPSurrogate`), ``'qbc'``, ``'loocv'``,
+        ``'lipschitz'``, ``'idw'``, ``'greedy'``, ``'cvt'``, ``'fisher_information'``, the optimisation
+        oriented ``'expected_improvement'``, ``'probability_improvement'``, ``'lcb'``, ``'ucb'``,
+        ``'sample_min'``, ``'soas'``, the sequences ``'sobol_seq'``, ``'halton'``, ``'mixed'``,
+        ``'error_window'``, ``'latin_hypercube'`` (maximin space filling) or ``'random'`` (baseline).
+        See ``bdopt.adaptive.designs`` and ``bdopt.adaptive.criteria``.
     surrogate:
         model refitted at every iteration to measure convergence (default :class:`~bdopt.surrogate.GPSurrogate`).
     seed:
@@ -115,6 +136,30 @@ class AdaptiveSampler:
             return designs.propose_nipv(U, Y, model, batch, rng, pr, avoid)
         if m == "cv_voronoi":
             return designs.propose_cv_voronoi(U, self._scale(Y), model, batch, rng, pr, avoid)
+        if m == "qbc":
+            return criteria.propose_qbc(U, Y, model, batch, rng, pr, avoid)
+        if m == "loocv":
+            return criteria.propose_loocv(U, Y, model, batch, rng, pr, avoid)
+        if m == "lipschitz":
+            return criteria.propose_lipschitz(U, Y, batch, rng, pr, avoid)
+        if m == "idw":
+            return criteria.propose_idw(U, Y, model, batch, rng, pr, avoid)
+        if m == "greedy":
+            return criteria.propose_greedy(U, batch, rng, pr, avoid)
+        if m == "cvt":
+            return criteria.propose_cvt(U, batch, rng, pr, avoid)
+        if m == "fisher_information":
+            return criteria.propose_fisher_information(U, Y, model, batch, rng, pr, avoid)
+        if m in ("expected_improvement", "probability_improvement", "lcb", "ucb", "sample_min"):
+            return criteria.propose_acquisition(m, U, Y, model, batch, rng, pr, avoid)
+        if m == "soas":
+            return criteria.propose_soas(U, Y, model, batch, rng, pr, avoid, iteration=it)
+        if m in ("sobol_seq", "halton"):
+            return criteria.propose_sequence(m.split("_")[0], U, batch, rng, pr, avoid, self.seed)
+        if m == "mixed":
+            return criteria.propose_mixed(U, batch, rng, pr, avoid, iteration=it, seed=self.seed)
+        if m == "error_window":
+            return criteria.propose_error_window(U, self._worst, batch, rng, pr, avoid)
         return designs.propose_voronoi_based(
             U, self._scale(Y), batch, rng, pr, avoid, exploit=m != "voronoi", fuzzy=m == "flola_voronoi",
         )
@@ -139,6 +184,7 @@ class AdaptiveSampler:
                 pred[te] = model.clone().fit_unit(U[tr], Y[tr], self.problem).predict_unit(U[te])
             truth = Y
         err = (pred - truth) / self._y_std
+        self._worst = (Ut if len(Ut) else U)[int(np.argmax((err**2).sum(axis=1)))]
         per_obj = pd.Series(np.sqrt((err**2).mean(axis=0)), index=self.problem.objective_names)
         ss_res = ((pred - truth) ** 2).sum(axis=0)
         ss_tot = ((truth - truth.mean(axis=0)) ** 2).sum(axis=0)
@@ -155,6 +201,9 @@ class AdaptiveSampler:
         batch: int = 1,
         tol: float = 0.05,
         max_evaluations: int | None = None,
+        patience: int | None = None,
+        min_improvement: float = 0.02,
+        max_std: float | None = None,
         initial_data: pd.DataFrame | None = None,
         test_data: pd.DataFrame | None = None,
         checkpoint_dir: str | Path | None = None,
@@ -168,6 +217,14 @@ class AdaptiveSampler:
         first, then ``batch`` points per iteration are added until the test ``scaled_rmse`` is
         ``<= tol``, ``max_iter`` iterations or ``max_evaluations`` simulations are reached.
         ``initial_data`` / ``test_data`` reuse tables of already evaluated points.
+
+        Further stopping rules (``stop_reason`` tells which one fired):
+
+        * ``patience=k``: stop (``'plateau'``) when, over the last ``k`` iterations, the best ``scaled_rmse`` has not
+          improved by more than the fraction ``min_improvement`` of the best value before them;
+        * ``max_std=eps``: stop (``'uncertainty'``) when the largest predictive standard deviation of the surrogate over
+          2000 random points, in standard deviations of the objectives and averaged over objectives, is at most ``eps``
+          (needs a surrogate with uncertainty). It is recorded in ``history['max_std']`` whenever the surrogate has one.
         """
         pr = self.problem
         d = pr.n_var
@@ -210,6 +267,10 @@ class AdaptiveSampler:
                    "elapsed_s": round(time.perf_counter() - t0, 2)}
             row.update({f"rmse_scaled:{k}": v for k, v in per_obj.items()})
             row.update({f"r2:{k}": v for k, v in self._last_r2.items()})
+            if model.has_uncertainty:
+                probe = self.problem.snap(np.random.default_rng([self.seed, 3]).random((2000, d)))
+                sd = model.predict_unit_std(probe)
+                row["max_std"] = float((sd / self._y_std).mean(axis=1).max()) if sd is not None else np.nan
             rows.append(row)
             if verbose:
                 print(f"[bdopt] iter {it:3d}  train={len(U):4d}  evals={n_evals:4d}  scaled_rmse={score:.4f}")
@@ -219,10 +280,24 @@ class AdaptiveSampler:
                 callback(it, pd.Series(row))
             return score
 
+        if max_std is not None and not model.has_uncertainty:
+            raise ValueError("max_std needs a surrogate with uncertainty (GPSurrogate, BaggingSurrogate, ...)")
+
+        def rule() -> str | None:
+            """The extra stopping rule that fires after the latest fit, if any."""
+            if max_std is not None and rows[-1].get("max_std", np.inf) <= max_std:
+                return "uncertainty"
+            if patience is not None and len(rows) > patience:
+                scores = [r["scaled_rmse"] for r in rows]
+                before, recent = min(scores[:-patience]), min(scores[-patience:])
+                if recent > before * (1 - min_improvement):
+                    return "plateau"
+            return None
+
         score = fit_and_score(0)
-        stop = None
+        stop = rule()
         it = 0
-        while score > tol and it < max_iter:
+        while stop is None and score > tol and it < max_iter:
             if max_evaluations is not None and n_evals >= max_evaluations:
                 stop = "max_evaluations"
                 break
@@ -236,6 +311,7 @@ class AdaptiveSampler:
             if len(Uok):
                 U, Y = np.vstack([U, Uok]), np.vstack([Y, Yok])
             score = fit_and_score(it)
+            stop = rule()
         if stop is None:
             stop = "tolerance" if score <= tol else "max_iter"
         failed_all = np.vstack(failed) if failed and sum(len(f) for f in failed) else np.empty((0, d))
@@ -244,7 +320,7 @@ class AdaptiveSampler:
             test=self._table(Ut, Yt) if len(Ut) else pd.DataFrame(columns=pr.names()),
             history=pd.DataFrame(rows),
             surrogate=model,
-            converged=score <= tol,
+            converged=score <= tol or stop == "uncertainty",
             stop_reason=stop,
             n_evaluations=n_evals,
             failed=pr.decode(failed_all) if len(failed_all) else pd.DataFrame(columns=pr.parameter_names),

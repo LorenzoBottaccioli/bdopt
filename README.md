@@ -9,13 +9,25 @@ multi-objective optimization (NSGA-II / NSGA-III). Built for the Smart Building 
   and names that changed between releases are aliased (see [EnergyPlus versions](docs/guide/energyplus-versions.md)).
 * **Independent library.** `pip install` + any EnergyPlus install, on any OS. No Docker, no fixed paths
   (a Dockerfile is provided as a convenience, nothing depends on it).
-* **Nine adaptive sampling strategies** in numpy/scipy: fuzzy LOLA-Voronoi, LOLA-Voronoi, cross-validation
-  Voronoi, Voronoi, probabilistic (largest predictive deviation), GP variance, negative integrated posterior
-  variance, maximin Latin hypercube and random.
-* **Fifteen surrogate models**, from polynomials and RBF interpolation to multi-task and deep-kernel Gaussian
-  processes, plus automatic selection by cross-validation.
+* **Twenty-six adaptive sampling strategies** in numpy/scipy: fuzzy LOLA-Voronoi, LOLA-Voronoi, cross-validation
+  Voronoi, Voronoi, probabilistic, GP variance, negative integrated posterior variance, query by committee,
+  leave-one-out, Lipschitz, inverse-distance weighting, greedy, CVT, Fisher information, expected improvement,
+  probability of improvement, lower/upper confidence bound, sample-min, SOAS, Sobol'/Halton sequences, mixed,
+  error window, maximin Latin hypercube and random.
+* **Twenty-eight surrogate models**, from polynomials, PCE and RBF interpolation to boosting libraries, multi-task,
+  deep-kernel and sparse Gaussian processes, ensembles and automatic selection by cross-validation.
 * **Categorical parameters are first-class** (glazing type, construction sets ...), in sampling, surrogates
   and optimization.
+
+## What to expect from adaptive sampling
+
+Measured on the platform's seven EnergyPlus models (6 to 7 parameters, 35 training simulations) and read in the
+literature ([docs/literature.md](docs/literature.md)): **a plain Latin hypercube with a Gaussian process is hard to
+beat** when responses are smooth, as insulation, lighting, ventilation and shading set points are. No adaptive
+strategy beat it reliably there. Adaptive sampling pays off with a localised nonlinearity (in the analytic test,
+FLOLA-Voronoi cut the error by 41 %), with very few simulations, or with many parameters; its everyday value is the
+**convergence monitoring and the stopping rule** (how many simulations were enough). The strategies are there to be
+compared on your own model, not because one of them is always better.
 
 ```python
 from bdopt import *
@@ -61,16 +73,16 @@ EnergyPlus is found through, in order, `EnergyPlus(path=...)`, `BDOPT_EPLUS_PATH
 | `bdopt.Problem`, `Parameter`, `FieldSelector`, `RangeParameter`, `IntegerParameter`, `CategoryParameter`, `GenericSelector` | the design space; everything numeric happens in the unit cube, so bounds, order and scaling are never typed by hand |
 | `MeterReader`, `VariableReader`, `FunctionReader` | objectives (units, aggregation, direction min/max, custom post-processing of `eplusout.sql`) |
 | `EnergyPlusEvaluator` | parallel runs, on-disk cache (resume after a crash for free), failure handling (NaN + kept run directory), EnergyPlus warning/severe-error counts and an `on_severe` policy, `auto_upgrade` |
-| `bdopt.sampling` | `lhs`, `sobol`, `random`, `factorial` with constraints |
-| `bdopt.adaptive.AdaptiveSampler` | `flola_voronoi` (default), `lola_voronoi`, `cv_voronoi`, `voronoi`, `probabilistic`, `gp_variance`, `nipv`, `latin_hypercube`, `random`; stops on test error, iterations or simulation budget |
-| `bdopt.surrogate` | `GPSurrogate`, `MultiTaskGPSurrogate`, `DeepKernelGPSurrogate`, `RandomForestSurrogate`, `ExtraTreesSurrogate`, `GradientBoostingSurrogate`, `SVRSurrogate`, `KernelRidgeSurrogate`, `KNNSurrogate`, `PolynomialSurrogate`, `RBFSurrogate`, `MLPSurrogate`, `TorchMLP`, `MCDropoutMLP`, `AutoSurrogate`; metrics, cross-validation |
+| `bdopt.sampling` | `lhs`, `sobol`, `halton`, `hammersley`, `maximin_lhs`, `fps`, `cvt`, `random`, `factorial` with constraints |
+| `bdopt.adaptive.AdaptiveSampler` | 26 methods (`bdopt.adaptive.METHODS`, default `flola_voronoi`; see the [algorithms guide](docs/guide/adaptive-algorithms.md)); stops on test error, iterations or simulation budget |
+| `bdopt.surrogate` | 28 models (`bdopt.surrogate.SURROGATES`; see the [models guide](docs/guide/surrogate-models.md)) incl. `GPSurrogate`, `SparseGPSurrogate`, `UniversalKrigingSurrogate`, `PCESurrogate`, boosting, `BaggingSurrogate`, `AutoSurrogate`; metrics, cross-validation |
 | `bdopt.optimize` | `nsga2`, `nsga3` (pymoo), mixed variables, constraints, `ParetoFront.closest_to_ideal()` |
 | `bdopt.DesignStudy`, `bdopt run study.yaml` | the whole pipeline from a YAML/JSON file (`examples/study.yaml`) |
 | `bdopt.viz` | pairplot, correlation heatmap, parallel coordinates, convergence, parity, Pareto (matplotlib) |
 
 ## Documentation
 
-Benchmark results (all tables, protocol, how to reproduce): [docs/benchmarks.md](docs/benchmarks.md).
+Benchmark results (all tables, protocol, how to reproduce): [docs/benchmarks.md](docs/benchmarks.md). What the literature says: [docs/literature.md](docs/literature.md).
 
 The documentation is a Sphinx site in `docs/` (build it with `pip install -e ".[docs]"` then
 `sphinx-build -W -b html docs docs/_build/html`):
@@ -97,49 +109,22 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
   Re-simulating the platform's stored test points with EnergyPlus 9.6 gives a maximum relative difference to
   its BESOS results of 7.7e-8, 2.4e-8, 1.6e-4, 4.7e-5, 9.3e-5, 3.5e-4 and 2.8e-7 for tests 1 to 7 (I did not
   investigate the 1e-4 differences of the residential and laboratory models).
-* **Strategies and surrogates on the seven tests**, real EnergyPlus runs (`docs/benchmarks/platform_benchmark.py`,
-  raw results in `docs/benchmarks/platform_*.csv`). Per test: 15 initial + 5 test simulations, then 20 adaptive
-  ones (35 training points); the plain Latin hypercube has 35 points; error = RMSE / range averaged over the
-  three objectives (`nrmse`) of a Gaussian process on 25 independent Latin-hypercube simulations; one seed
-  per test.
+* **Strategies and surrogates on the seven tests**, real EnergyPlus runs, 3 seeds
+  (`docs/benchmarks/platform_benchmark.py`; every table in [docs/benchmarks.md](docs/benchmarks.md), raw rows in
+  `docs/benchmarks/platform_*_full.csv`). Per test and seed: 15 initial + 5 held-out simulations, then 20 adaptive ones
+  (35 training points); the plain Latin hypercube has 35 points; error = `nrmse` of a Gaussian process on 25
+  independent simulations, mean over the seven tests, ± standard deviation over the three seeds.
 
-  Adaptive strategies (same Gaussian process):
+  * **Sampling.** Plain Latin hypercube **0.020 ± 0.001**, then `nipv` 0.021, `voronoi` 0.021, `sobol_seq` 0.022,
+    `flola_voronoi` 0.022, ... `qbc` 0.025, `lola_voronoi` 0.025; `probabilistic` is clearly worse (0.043). The best
+    adaptive strategies beat the plain Latin hypercube in about half of the 21 test/seed pairs (`nipv` 11, `voronoi`
+    10, `flola_voronoi` 9), so on these models they are indistinguishable from it rather than better.
+  * **Surrogates** (trained on the plain Latin hypercube). The Gaussian process family leads: `sparse_gp` 0.019,
+    `gp` and `auto` 0.020 (`auto` picks the GP every time), `stacking` 0.021, `universal_kriging` 0.025, `pce` 0.031;
+    every other model is above 0.038. `sparse_gp` was below `gp` in 20 of 21 pairs, by about 0.001; it differs in kernel
+    parameterisation and in using a variational bound instead of the marginal likelihood, so I would not claim it is
+    a better method, only that the difference is consistent here. k-NN and the single decision tree are the worst (0.15).
 
-  |  | test 1 | test 2 | test 3 | test 4 | test 5 | test 6 | test 7 | mean |
-  |---|---|---|---|---|---|---|---|---|
-  | plain_lhs | 0.032 | 0.015 | 0.016 | 0.029 | 0.008 | 0.027 | 0.014 | 0.020 |
-  | nipv | 0.032 | 0.018 | 0.015 | 0.026 | 0.007 | 0.035 | 0.016 | 0.021 |
-  | latin_hypercube | 0.030 | 0.019 | 0.015 | 0.026 | 0.008 | 0.033 | 0.024 | 0.022 |
-  | flola_voronoi | 0.039 | 0.021 | 0.012 | 0.022 | 0.007 | 0.038 | 0.017 | 0.022 |
-  | cv_voronoi | 0.037 | 0.019 | 0.015 | 0.020 | 0.009 | 0.044 | 0.015 | 0.023 |
-  | lola_voronoi | 0.040 | 0.019 | 0.019 | 0.033 | 0.008 | 0.057 | 0.017 | 0.027 |
-  | probabilistic | 0.056 | 0.025 | 0.019 | 0.063 | 0.012 | 0.057 | 0.024 | 0.036 |
-
-  **On these models no adaptive strategy beat the plain Latin hypercube** (mean 0.020 against 0.021 to 0.036);
-  `nipv`, `flola_voronoi`, `cv_voronoi` and `latin_hypercube` are within the noise of one seed per test, and
-  `probabilistic` is clearly worse. This agrees with the analytic study below: the platform's responses are
-  smooth, so adaptivity has nothing to find. Surrogates trained on the 35-point Latin hypercube:
-
-  |  | test 1 | test 2 | test 3 | test 4 | test 5 | test 6 | test 7 | mean |
-  |---|---|---|---|---|---|---|---|---|
-  | auto | 0.032 | 0.015 | 0.016 | 0.029 | 0.008 | 0.027 | 0.014 | 0.020 |
-  | gp | 0.032 | 0.015 | 0.016 | 0.029 | 0.008 | 0.027 | 0.014 | 0.020 |
-  | multitask_gp | 0.035 | 0.027 | 0.048 | 0.050 | 0.031 | 0.062 | 0.019 | 0.039 |
-  | mc_dropout_mlp | 0.042 | 0.040 | 0.037 | 0.044 | 0.038 | 0.059 | 0.023 | 0.041 |
-  | deep_kernel_gp | 0.047 | 0.036 | 0.044 | 0.037 | 0.038 | 0.079 | 0.025 | 0.044 |
-  | rbf | 0.044 | 0.046 | 0.053 | 0.059 | 0.032 | 0.065 | 0.027 | 0.046 |
-  | kernel_ridge | 0.048 | 0.059 | 0.051 | 0.052 | 0.040 | 0.054 | 0.032 | 0.048 |
-  | svr | 0.041 | 0.061 | 0.058 | 0.059 | 0.035 | 0.063 | 0.041 | 0.051 |
-  | mlp | 0.046 | 0.049 | 0.057 | 0.062 | 0.041 | 0.080 | 0.033 | 0.053 |
-  | gradient_boosting | 0.064 | 0.067 | 0.055 | 0.055 | 0.034 | 0.080 | 0.050 | 0.058 |
-  | torch_mlp | 0.048 | 0.069 | 0.058 | 0.067 | 0.063 | 0.097 | 0.033 | 0.062 |
-  | polynomial | 0.053 | 0.075 | 0.083 | 0.077 | 0.061 | 0.083 | 0.048 | 0.068 |
-  | extra_trees | 0.078 | 0.085 | 0.103 | 0.101 | 0.091 | 0.115 | 0.060 | 0.090 |
-  | random_forest | 0.088 | 0.099 | 0.119 | 0.116 | 0.112 | 0.132 | 0.071 | 0.105 |
-  | knn | 0.133 | 0.133 | 0.135 | 0.156 | 0.150 | 0.158 | 0.107 | 0.139 |
-
-  The Gaussian process is the best model on every test; `auto` selects it every time. Trees and k-NN are the
-  least accurate with this few points. Neural networks need more data than 35 points.
 * **Adaptive strategies vs plain Latin hypercube, analytic responses** (`docs/benchmarks/adaptive_vs_lhs.py`):
 
   Same Gaussian process, 3 seeds, 50 training points, error = RMSE / standard deviation of the response on 3000
@@ -155,6 +140,11 @@ All measured in the development environment (4 cores, EnergyPlus from the offici
   (FLOLA 41 % lower error); NIPV and the variance-based methods help a little on the step, within the spread
   between seeds; on the smooth response nothing matters. Methods that chase uncertainty alone
   (`probabilistic`, `gp_variance`) can be much worse than a plain design (they pile samples on the boundary).
+* **Many parameters.** On a 15-parameter EnergyPlus office model (80 training simulations, 2 seeds) query by committee
+  (`qbc`) and the LOLA-Voronoi variants had 20 to 30 % lower error than a plain Latin hypercube
+  (nrmse 0.033 to 0.037 against 0.046; [docs/benchmarks.md](docs/benchmarks.md)). On analytic 15- and 20-parameter
+  responses no strategy clearly beat the Latin hypercube. So the benefit seems to depend on the problem, not only on
+  the number of parameters.
 * **Upgrading a model.** The platform's Office model (EnergyPlus 9.6) upgraded to 25.2 (8 transition steps)
   and simulated; the upgrade took about 230 s once (cached afterwards), and the three objectives differ from
   the 9.6 results by -2.3 %, +4.9 %, -5.8 %. I did not isolate how much of that is the engine and how much the

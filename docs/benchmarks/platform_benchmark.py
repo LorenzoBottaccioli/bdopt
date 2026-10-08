@@ -1,11 +1,12 @@
-"""Benchmark on the seven platform tests, with real EnergyPlus runs.
+"""Full benchmark on the seven platform tests, with real EnergyPlus runs.
 
     python docs/benchmarks/platform_benchmark.py ROOT --out platform_bench
 
-For every test: an independent test set of Latin-hypercube simulations, a plain Latin hypercube of the same
-size as each adaptive run, one adaptive run per method, and every surrogate trained on the Latin hypercube.
-Results are appended to ``OUT/results.csv`` (finished simulations are cached, so the script can be
-interrupted and restarted). ``ROOT`` is the platform's folder ``Surrogate modeling examples``.
+For every test, seed and budget: the independent test set (shared by all seeds), a plain Latin hypercube with the
+budget's number of points, one adaptive run per method (all of ``bdopt.adaptive.METHODS``) and every surrogate
+trained on the plain Latin hypercube. Rows are appended to ``OUT/adaptive.csv`` and ``OUT/surrogates.csv`` as
+they are produced, and finished simulations are cached, so an interrupted run can be restarted with the same
+command. ``ROOT`` is the platform's folder ``Surrogate modeling examples``.
 """
 
 from __future__ import annotations
@@ -24,16 +25,32 @@ from platform_tests import build  # noqa: E402
 
 from bdopt import EnergyPlusEvaluator, sampling  # noqa: E402
 from bdopt.adaptive import AdaptiveSampler  # noqa: E402
-from bdopt.surrogate import GPSurrogate, make_surrogate  # noqa: E402
+from bdopt.surrogate import _TORCH, GPSurrogate, make_surrogate  # noqa: E402
+from bdopt.surrogate import SURROGATES as REGISTRY
 
-METHODS = ["flola_voronoi", "lola_voronoi", "cv_voronoi", "nipv", "probabilistic", "latin_hypercube"]
-SURROGATES = ["gp", "multitask_gp", "deep_kernel_gp", "random_forest", "extra_trees", "gradient_boosting",
-              "svr", "kernel_ridge", "knn", "polynomial", "rbf", "mlp", "torch_mlp", "mc_dropout_mlp", "auto"]
+#: strategies compared by default (the cheap, distinct ones out of ``bdopt.adaptive.METHODS``)
+METHODS = ["flola_voronoi", "lola_voronoi", "cv_voronoi", "voronoi", "nipv", "gp_variance", "qbc", "loocv",
+           "lipschitz", "greedy", "sobol_seq", "mixed", "latin_hypercube", "random"]
+#: every registered surrogate
+SURROGATES = list(REGISTRY) + list(_TORCH)
 
 
-def error(model, test: pd.DataFrame, problem) -> dict:
+def error(model, test: pd.DataFrame) -> dict:
     s = model.score(test)
     return {"nrmse": float(s["nrmse"].mean()), "rmse_pct": float(s["rmse_pct"].mean()), "r2": float(s["r2"].mean())}
+
+
+def done(path: Path, **key) -> set:
+    if not path.exists():
+        return set()
+    d = pd.read_csv(path)
+    for k, v in key.items():
+        d = d[d[k] == v]
+    return set(d["method" if "method" in d else "surrogate"])
+
+
+def append(path: Path, row: dict) -> None:
+    pd.DataFrame([row]).to_csv(path, mode="a", header=not path.exists(), index=False)
 
 
 def main() -> None:
@@ -41,48 +58,59 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("root")
     ap.add_argument("--out", default="platform_bench")
-    ap.add_argument("--tests", default="1,2,3,4,5,6,7")
-    ap.add_argument("--n-initial", type=int, default=15)
-    ap.add_argument("--n-test", type=int, default=5)
+    ap.add_argument("--tests", default="6,7,1,4,3,2,5")
+    ap.add_argument("--seeds", default="0,1,2,3,4")
+    ap.add_argument("--budgets", default="35,60")
+    ap.add_argument("--methods", default=",".join(METHODS))
+    ap.add_argument("--surrogates", default=",".join(SURROGATES))
     ap.add_argument("--batch", type=int, default=5)
-    ap.add_argument("--iters", type=int, default=4)
+    ap.add_argument("--n-test", type=int, default=5)
     ap.add_argument("--n-independent", type=int, default=25)
     ap.add_argument("--processes", type=int, default=4)
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    budget = args.n_initial + args.batch * args.iters
-    rows_adaptive, rows_surrogate = [], []
-    for t in [int(x) for x in args.tests.split(",")]:
-        problem, idf, epw = build(t, args.root)
-        ev = EnergyPlusEvaluator(problem, idf, epw, out_dir=out / f"test{t}", processes=args.processes)
-        t0 = time.time()
-        test = sampling.lhs(problem, args.n_independent, seed=1000 + t)
-        test = test.join(ev.evaluate(test))
-        lhs = sampling.lhs(problem, budget, seed=t)
-        lhs = lhs.join(ev.evaluate(lhs))
-        print(f"[test {t}] independent set and Latin hypercube done ({time.time() - t0:.0f} s)", flush=True)
-        gp = GPSurrogate().fit(lhs, problem)
-        rows_adaptive.append({"test": t, "method": "plain_lhs", "n_train": len(lhs), **error(gp, test, problem)})
-        for m in METHODS:
-            r = AdaptiveSampler(problem, ev, m, GPSurrogate(), seed=t).run(
-                n_initial=args.n_initial, n_test=args.n_test, max_iter=args.iters, batch=args.batch,
-                tol=0, verbose=False,
-            )
-            e = error(r.surrogate, test, problem)
-            rows_adaptive.append({"test": t, "method": m, "n_train": len(r.data), **e})
-            print(f"[test {t}] {m:16s} n={len(r.data)} nrmse={e['nrmse']:.4f} rmse%={e['rmse_pct']:.2f}", flush=True)
-            pd.DataFrame(rows_adaptive).to_csv(out / "adaptive.csv", index=False)
-        for k in SURROGATES:
-            t1 = time.time()
-            try:
-                e = error(make_surrogate(k).fit(lhs, problem), test, problem)
-            except Exception as exc:  # report, do not hide
-                e = {"nrmse": np.nan, "rmse_pct": np.nan, "r2": np.nan}
-                print(f"[test {t}] surrogate {k} failed: {exc}", flush=True)
-            rows_surrogate.append({"test": t, "surrogate": k, "n_train": len(lhs), "fit_s": time.time() - t1, **e})
-            pd.DataFrame(rows_surrogate).to_csv(out / "surrogates.csv", index=False)
-        print(f"[test {t}] finished ({time.time() - t0:.0f} s)", flush=True)
+    fa, fs = out / "adaptive2.csv", out / "surrogates2.csv"
+    tests = [int(x) for x in args.tests.split(",")]
+    problems, evaluators, independent = {}, {}, {}
+    for t in tests:
+        problems[t], idf, epw = build(t, args.root)
+        evaluators[t] = EnergyPlusEvaluator(problems[t], idf, epw, out_dir=out / f"test{t}", processes=args.processes)
+        x = sampling.lhs(problems[t], args.n_independent, seed=1000 + t)
+        independent[t] = x.join(evaluators[t].evaluate(x))
+    for budget in [int(b) for b in args.budgets.split(",")]:
+        n0 = round(0.43 * budget)
+        iters = (budget - n0) // args.batch
+        for seed in [int(s) for s in args.seeds.split(",")]:
+            for t in tests:
+                t0 = time.time()
+                pr, ev, test = problems[t], evaluators[t], independent[t]
+                key = {"test": t, "budget": budget, "seed": seed}
+                lhs = sampling.lhs(pr, budget, seed=seed * 100 + t)
+                lhs = lhs.join(ev.evaluate(lhs))
+                have = done(fa, **key)
+                if "plain_lhs" not in have:
+                    append(fa, {**key, "method": "plain_lhs", "n_train": len(lhs), **error(GPSurrogate().fit(lhs, pr), test)})
+                for m in args.methods.split(","):
+                    if m in have:
+                        continue
+                    r = AdaptiveSampler(pr, ev, m, GPSurrogate(), seed=seed * 100 + t).run(
+                        n_initial=n0, n_test=args.n_test, max_iter=iters, batch=args.batch, tol=0, verbose=False)
+                    e = error(r.surrogate, test)
+                    append(fa, {**key, "method": m, "n_train": len(r.data), **e})
+                    print(f"[B{budget} s{seed} t{t}] {m:16s} n={len(r.data)} nrmse={e['nrmse']:.4f}", flush=True)
+                have_s = done(fs, **key)
+                for k in args.surrogates.split(","):
+                    if k in have_s:
+                        continue
+                    t1 = time.time()
+                    try:
+                        e = error(make_surrogate(k).fit(lhs, pr), test)
+                    except Exception as exc:  # report, do not hide
+                        e = {"nrmse": np.nan, "rmse_pct": np.nan, "r2": np.nan}
+                        print(f"[B{budget} s{seed} t{t}] surrogate {k} failed: {exc}", flush=True)
+                    append(fs, {**key, "surrogate": k, "n_train": len(lhs), "fit_s": time.time() - t1, **e})
+                print(f"[B{budget} s{seed} t{t}] finished ({time.time() - t0:.0f} s)", flush=True)
 
 
 if __name__ == "__main__":
